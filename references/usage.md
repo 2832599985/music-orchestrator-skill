@@ -64,6 +64,7 @@ Search:
 ```bash
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient
+~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-search --provider MyFreeMP3JuicesMusicClient --query "city pop 夜晚" --limit 12
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-search-variants --provider MyFreeMP3JuicesMusicClient --query "city pop 夜晚" --limit 12
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health
@@ -174,9 +175,9 @@ Push:
 - `search fell back to iTunes`
   Embedded providers did not return usable results in time, so the skill returned search-only fallback metadata.
 - `missing_cf_clearance`
-  The protected MyFreeMP3Juices provider is enabled but has no local auth state yet. Run `channel-auth refresh`.
+  The protected MyFreeMP3Juices provider is enabled but has no local auth state yet. Run `channel-auth refresh` or `channel-auth set`.
 - `invalid_cf_clearance`
-  The saved or exported `cf_clearance` is expired. Refresh it with `channel-auth refresh`.
+  The saved or exported `cf_clearance` is expired. Refresh it with `channel-auth refresh` or replace it with `channel-auth set`.
 - `No collection found`
   Create a playlist or save some tracks first.
 - `No downloadable variant`

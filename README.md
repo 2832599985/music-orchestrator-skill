@@ -119,6 +119,7 @@ Examples:
 ```bash
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient
+~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-search --provider MyFreeMP3JuicesMusicClient --query "Minami Kawakiwoameku" --limit 8
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health --refresh
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl search --query "city pop 夜晚" --type mixed --limit 10
@@ -135,8 +136,9 @@ Recommended listen/download flow:
 1. Use `musicctl listen --query "..."` when the user wants to hear a song now
 2. The skill should first try `MyFreeMP3JuicesMusicClient`
 3. If auth is missing, refresh it with `musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient`
-4. Use `channel-search` or `channel-search-variants` when you need provider-only inspection
-5. Use `download choose` or `download track --provider ...` only when you want manual provider control
+4. If you already have a fresh cookie value, set it directly with `musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"`
+5. Use `channel-search` or `channel-search-variants` when you need provider-only inspection
+6. Use `download choose` or `download track --provider ...` only when you want manual provider control
 
 ## Provider Health
 
@@ -169,8 +171,10 @@ Probe results are persisted into `provider_health`.
   - `MUSIC_ORCH_MYFREEJUICES_CF_CLEARANCE`
   - `MUSIC_ORCH_MYFREEJUICES_LANG`
 - You can refresh local auth state with:
-  `~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-refresh --provider MyFreeMP3JuicesMusicClient`
-- `channels-refresh` requires local Playwright and Chromium:
+  `~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient`
+- You can also set it manually:
+  `~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"`
+- `channel-auth refresh` requires local Playwright and Chromium:
   `pip install playwright`
   `python3 -m playwright install chromium`
 

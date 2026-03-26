@@ -108,6 +108,7 @@ Common commands:
 ```bash
 {baseDir}/scripts/musicctl channels
 {baseDir}/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient
+{baseDir}/scripts/musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"
 {baseDir}/scripts/musicctl channel-search --provider MyFreeMP3JuicesMusicClient --query "周杰伦 稻香" --limit 12
 {baseDir}/scripts/musicctl channel-search-variants --provider MyFreeMP3JuicesMusicClient --query "周杰伦 稻香" --limit 12
 {baseDir}/scripts/musicctl channels-health
@@ -162,6 +163,7 @@ Prefer the finer-grained path when the user wants control:
 - `variants` or `download preview` before selecting a provider for download
 - `download choose` when the user wants the skill to inspect provider health, variants, and automatically choose a download source
 - `channel-auth refresh --provider MyFreeMP3JuicesMusicClient` when the default protected provider needs a fresh `cf_clearance` cookie
+- `channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance ...` when the default protected provider needs a manual `cf_clearance` update
 - `channel-search` or `channel-search-variants` when the model must search only the default protected provider
 - `listen --query ...` when the user wants to hear a song and expects the skill to download it automatically
 

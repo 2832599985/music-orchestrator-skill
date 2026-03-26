@@ -1927,6 +1927,53 @@ def cmd_channel_auth_refresh(provider: str, auth_store: ProviderAuthStore, timeo
     return cmd_channels_refresh(provider, auth_store, timeout, music_lang)
 
 
+def cmd_channel_auth_set(
+    provider: str,
+    auth_store: ProviderAuthStore,
+    cf_clearance: str,
+    music_lang: str,
+    user_agent: str,
+) -> dict[str, Any]:
+    if provider != MYFREEJUICES_PROVIDER:
+        raise SystemExit(f"Unsupported provider for channel-auth set: {provider}")
+    clearance = (cf_clearance or "").strip()
+    if not clearance:
+        raise SystemExit("cf_clearance is required")
+    resolved_user_agent = (
+        (user_agent or "").strip()
+        or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0"
+    )
+    record = auth_store.set(
+        provider,
+        {
+            "cf_clearance": clearance,
+            "music_lang": (music_lang or "en").strip() or "en",
+            "user_agent": resolved_user_agent,
+            "search_headers": {
+                "accept": "text/javascript, application/javascript, */*; q=0.01",
+                "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "origin": "https://2024.myfreemp3juices.cc",
+                "referer": "https://2024.myfreemp3juices.cc/",
+                "x-requested-with": "XMLHttpRequest",
+            },
+            "updated_at": utc_now(),
+            "site": "https://2024.myfreemp3juices.cc/",
+            "source": "manual_set",
+        },
+    )
+    return {
+        "provider": provider,
+        "status": "stored",
+        "state_file": str(auth_store.path),
+        "updated_at": record["updated_at"],
+        "cf_clearance_preview": redact_secret(clearance),
+        "music_lang": record["music_lang"],
+        "source": "manual_set",
+    }
+
+
 def cmd_listen(
     repo: Repository,
     adapter: MusicdlAdapter,
@@ -2046,6 +2093,11 @@ def build_parser() -> argparse.ArgumentParser:
     channel_auth_refresh.add_argument("--provider", required=True)
     channel_auth_refresh.add_argument("--timeout", type=int, default=180)
     channel_auth_refresh.add_argument("--lang", default="en")
+    channel_auth_set = channel_auth_sub.add_parser("set")
+    channel_auth_set.add_argument("--provider", required=True)
+    channel_auth_set.add_argument("--cf-clearance", required=True)
+    channel_auth_set.add_argument("--lang", default="en")
+    channel_auth_set.add_argument("--user-agent", default="")
 
     channels_health = sub.add_parser("channels-health")
     channels_health.add_argument("--limit", type=int, default=20)
@@ -2200,6 +2252,8 @@ def main() -> None:
     elif args.command == "channel-auth":
         if args.channel_auth_action == "refresh":
             print_json(cmd_channel_auth_refresh(args.provider, auth_store, args.timeout, args.lang))
+        elif args.channel_auth_action == "set":
+            print_json(cmd_channel_auth_set(args.provider, auth_store, args.cf_clearance, args.lang, args.user_agent))
     elif args.command == "channels-health":
         print_json(cmd_channels_health(repo, adapter, args.limit, args.refresh, args.provider))
     elif args.command == "analyze":
