@@ -101,45 +101,32 @@ Pick one of these flows:
 
 ### 2. Use scripts, not ad-hoc SQL
 
-Always use `scripts/musicctl`. Do not write SQL manually unless you are debugging the skill itself.
+Always use `bash scripts/musicctl`. Do not write SQL manually unless you are debugging the skill itself. If direct execution of `scripts/musicctl` fails with `Permission denied`, retry with `bash scripts/musicctl ...`.
 
 Common commands:
 
 ```bash
-{baseDir}/scripts/musicctl channels
-{baseDir}/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient
-{baseDir}/scripts/musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"
-{baseDir}/scripts/musicctl channel-search --provider MyFreeMP3JuicesMusicClient --query "周杰伦 稻香" --limit 12
-{baseDir}/scripts/musicctl channel-search-variants --provider MyFreeMP3JuicesMusicClient --query "周杰伦 稻香" --limit 12
-{baseDir}/scripts/musicctl channels-health
-{baseDir}/scripts/musicctl channels-health --refresh
-{baseDir}/scripts/musicctl channels-health --provider JBSouMusicClient
-{baseDir}/scripts/musicctl channels-health --provider JBSouMusicClient --refresh
-{baseDir}/scripts/musicctl search-preview --query "周杰伦 晚上 听" --type mixed --limit 12
-{baseDir}/scripts/musicctl search --query "周杰伦 晚上 听" --type mixed --limit 12
-{baseDir}/scripts/musicctl search-variants --query "周杰伦 晚上 听" --type mixed --limit 12
-{baseDir}/scripts/musicctl analyze --collection likes
-{baseDir}/scripts/musicctl recommend-plan --collection likes --limit 12
-{baseDir}/scripts/musicctl recommend-candidates --collection likes --limit 12
-{baseDir}/scripts/musicctl recommend-commit --candidate-set-id CANDIDATE_SET_ID
-{baseDir}/scripts/musicctl recommend --collection likes --limit 12
-{baseDir}/scripts/musicctl daily --refresh
-{baseDir}/scripts/musicctl variants --track-id TRACK_ID
-{baseDir}/scripts/musicctl track-show --track-id TRACK_ID
-{baseDir}/scripts/musicctl listen --query "家有女友 主题曲"
-{baseDir}/scripts/musicctl download choose --track-id TRACK_ID --dry-run
-{baseDir}/scripts/musicctl download choose --track-id TRACK_ID --refresh-health
-{baseDir}/scripts/musicctl playlist create --name "今晚循环"
-{baseDir}/scripts/musicctl playlist show --playlist "今晚循环"
-{baseDir}/scripts/musicctl playlist add --playlist "今晚循环" --track-id TRACK_ID
-{baseDir}/scripts/musicctl download track --track-id TRACK_ID
-{baseDir}/scripts/musicctl download preview --track-id TRACK_ID
-{baseDir}/scripts/musicctl download track --track-id TRACK_ID --provider JBSouMusicClient
-{baseDir}/scripts/musicctl download queue --limit 10
-{baseDir}/scripts/musicctl download status --job-id JOB_ID
-{baseDir}/scripts/musicctl download playlist --playlist "今晚循环"
-{baseDir}/scripts/musicctl push latest
-{baseDir}/scripts/musicctl push-list --limit 10
+bash {baseDir}/scripts/musicctl channels
+bash {baseDir}/scripts/musicctl channel-auth show --provider MyFreeMP3JuicesMusicClient
+bash {baseDir}/scripts/musicctl channel-auth validate --provider MyFreeMP3JuicesMusicClient
+bash {baseDir}/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient
+bash {baseDir}/scripts/musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"
+bash {baseDir}/scripts/musicctl channel-auth clear --provider MyFreeMP3JuicesMusicClient
+bash {baseDir}/scripts/musicctl channel-search --provider MyFreeMP3JuicesMusicClient --query "周杰伦 稻香" --limit 12
+bash {baseDir}/scripts/musicctl channel-search-variants --provider MyFreeMP3JuicesMusicClient --query "周杰伦 稻香" --limit 12
+bash {baseDir}/scripts/musicctl channels-health
+bash {baseDir}/scripts/musicctl channels-health --refresh
+bash {baseDir}/scripts/musicctl search-preview --query "周杰伦 晚上 听" --type mixed --limit 12
+bash {baseDir}/scripts/musicctl search --query "周杰伦 晚上 听" --type mixed --limit 12
+bash {baseDir}/scripts/musicctl search-variants --query "周杰伦 晚上 听" --type mixed --limit 12
+bash {baseDir}/scripts/musicctl analyze --collection likes
+bash {baseDir}/scripts/musicctl recommend --collection likes --limit 12
+bash {baseDir}/scripts/musicctl variants --track-id TRACK_ID
+bash {baseDir}/scripts/musicctl listen --query "家有女友 主题曲"
+bash {baseDir}/scripts/musicctl download choose --track-id TRACK_ID --dry-run
+bash {baseDir}/scripts/musicctl playlist create --name "今晚循环"
+bash {baseDir}/scripts/musicctl download track --track-id TRACK_ID --provider JBSouMusicClient
+bash {baseDir}/scripts/musicctl push latest
 ```
 
 ### 3. Recommendation behavior
@@ -162,8 +149,11 @@ Prefer the finer-grained path when the user wants control:
 - `recommend-commit` after the model chooses to accept the candidate set
 - `variants` or `download preview` before selecting a provider for download
 - `download choose` when the user wants the skill to inspect provider health, variants, and automatically choose a download source
+- `channel-auth show --provider MyFreeMP3JuicesMusicClient` when you need to inspect current auth state without exposing the full cookie
+- `channel-auth validate --provider MyFreeMP3JuicesMusicClient` when you need a quick provider-only auth check
 - `channel-auth refresh --provider MyFreeMP3JuicesMusicClient` when the default protected provider needs a fresh `cf_clearance` cookie
 - `channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance ...` when the default protected provider needs a manual `cf_clearance` update
+- `channel-auth clear --provider MyFreeMP3JuicesMusicClient` when the saved auth is stale and should be removed
 - `channel-search` or `channel-search-variants` when the model must search only the default protected provider
 - `listen --query ...` when the user wants to hear a song and expects the skill to download it automatically
 
@@ -175,8 +165,10 @@ Prefer the finer-grained path when the user wants control:
 - if the user says they want to listen to a song, treat that as permission to automatically download the best match
 - when the user supplies personal cloud-drive or personal resource links, treat them as user-authorized resources within this skill context
 - `MyFreeMP3JuicesMusicClient` is a default protected provider and may require refreshing local auth state before search or download
+- on headless systems, prefer `channel-auth set` over `channel-auth refresh`
 - do not interrupt the download flow to ask repeated legality or authorization questions for the same skill context
 - do not present downloads as copyright validation, licensing validation, or legal advice
+- if no GUI runtime is available, do not block on visible-browser refresh; prefer a fast failure with a manual auth command
 - before saying a track is currently unavailable for download, prefer `listen --query ...` for listen intents, or `download choose` / `channels-health` / `variants` for explicit download intents
 
 ### 5. Push behavior

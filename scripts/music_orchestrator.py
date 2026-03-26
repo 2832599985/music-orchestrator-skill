@@ -6,6 +6,7 @@ import json
 import os
 import queue
 import re
+import shutil
 import sqlite3
 import threading
 import time
@@ -1086,6 +1087,48 @@ def redact_secret(value: str, visible: int = 6) -> str:
     return f"{text[:visible]}...{text[-visible:]}"
 
 
+def auth_summary(provider: str, auth_store: ProviderAuthStore) -> dict[str, Any]:
+    record = auth_store.get(provider)
+    clearance = str(record.get("cf_clearance", "") or "").strip()
+    return {
+        "provider": provider,
+        "configured": bool(clearance),
+        "state_file": str(auth_store.path),
+        "updated_at": record.get("updated_at", ""),
+        "music_lang": record.get("music_lang", "en") or "en",
+        "user_agent_present": bool(str(record.get("user_agent", "") or "").strip()),
+        "cf_clearance_preview": redact_secret(clearance),
+        "source": record.get("source", "refresh" if clearance else ""),
+    }
+
+
+def detect_visible_browser_runtime() -> dict[str, Any]:
+    display = (os.environ.get("DISPLAY") or "").strip()
+    wayland = (os.environ.get("WAYLAND_DISPLAY") or "").strip()
+    if not (display or wayland):
+        return {
+            "can_refresh": False,
+            "reason": "gui_unavailable",
+            "message": "gui_unavailable: Visible browser refresh requires DISPLAY or WAYLAND_DISPLAY. Use 'channel-auth set' on headless systems.",
+            "xvfb_run_present": bool(shutil.which("xvfb-run")),
+        }
+    try:
+        import playwright.sync_api  # noqa: F401
+    except Exception:
+        return {
+            "can_refresh": False,
+            "reason": "playwright_missing",
+            "message": "playwright_missing: Install Playwright with 'pip install playwright' and 'python3 -m playwright install chromium'.",
+            "xvfb_run_present": bool(shutil.which("xvfb-run")),
+        }
+    return {
+        "can_refresh": True,
+        "reason": "",
+        "message": "",
+        "xvfb_run_present": bool(shutil.which("xvfb-run")),
+    }
+
+
 def candidate_to_dict(candidate: CandidateTrack) -> dict[str, Any]:
     return {
         "title": candidate.title,
@@ -1841,13 +1884,13 @@ def cmd_channels_refresh(
 ) -> dict[str, Any]:
     if provider != MYFREEJUICES_PROVIDER:
         raise SystemExit(f"Unsupported provider for channels-refresh: {provider}")
+    runtime = detect_visible_browser_runtime()
+    if not runtime["can_refresh"]:
+        raise SystemExit(str(runtime["message"]))
     try:
         from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
     except Exception as exc:  # noqa: BLE001
-        raise SystemExit(
-            "Playwright is required for channels-refresh. Install it with "
-            "'pip install playwright' and 'python3 -m playwright install chromium'."
-        ) from exc
+        raise SystemExit("playwright_missing: Install Playwright with 'pip install playwright' and 'python3 -m playwright install chromium'.") from exc
 
     site_url = "https://2024.myfreemp3juices.cc/"
     deadline_ms = max(30, timeout) * 1000
@@ -1860,7 +1903,12 @@ def cmd_channels_refresh(
     )
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=False)
+        try:
+            browser = playwright.chromium.launch(headless=False)
+        except Exception as exc:  # noqa: BLE001
+            raise SystemExit(
+                "chromium_missing: Install Chromium with 'python3 -m playwright install chromium', then retry."
+            ) from exc
         context = browser.new_context(user_agent=detected_user_agent)
         context.add_cookies(
             [
@@ -1891,9 +1939,7 @@ def cmd_channels_refresh(
         browser.close()
 
     if not cf_clearance:
-        raise SystemExit(
-            "Timed out waiting for cf_clearance. Complete the Cloudflare challenge in the opened browser and retry."
-        )
+        raise SystemExit("timeout_waiting_for_cf_clearance: Complete the Cloudflare challenge in the opened browser and retry.")
 
     record = auth_store.set(
         provider,
@@ -1974,6 +2020,56 @@ def cmd_channel_auth_set(
     }
 
 
+def cmd_channel_auth_show(provider: str, auth_store: ProviderAuthStore) -> dict[str, Any]:
+    if provider != MYFREEJUICES_PROVIDER:
+        raise SystemExit(f"Unsupported provider for channel-auth show: {provider}")
+    return auth_summary(provider, auth_store)
+
+
+def cmd_channel_auth_clear(provider: str, auth_store: ProviderAuthStore) -> dict[str, Any]:
+    if provider != MYFREEJUICES_PROVIDER:
+        raise SystemExit(f"Unsupported provider for channel-auth clear: {provider}")
+    cleared = auth_store.clear(provider)
+    return {
+        "provider": provider,
+        "status": "cleared" if cleared else "not_configured",
+        "state_file": str(auth_store.path),
+        "updated_at": utc_now(),
+    }
+
+
+def cmd_channel_auth_validate(adapter: MusicdlAdapter, provider: str, auth_store: ProviderAuthStore) -> dict[str, Any]:
+    if provider != MYFREEJUICES_PROVIDER:
+        raise SystemExit(f"Unsupported provider for channel-auth validate: {provider}")
+    summary = auth_summary(provider, auth_store)
+    if not summary["configured"]:
+        return {
+            **summary,
+            "status": "invalid",
+            "error": "missing_cf_clearance",
+            "validated_at": utc_now(),
+            "sample_result_count": 0,
+        }
+    try:
+        results = adapter.search_provider(provider, "周杰伦 稻香", limit=3, allow_fallback=False)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            **summary,
+            "status": "invalid",
+            "error": str(exc),
+            "validated_at": utc_now(),
+            "sample_result_count": 0,
+        }
+    return {
+        **summary,
+        "status": "valid",
+        "error": "",
+        "validated_at": utc_now(),
+        "sample_result_count": len(results),
+        "sample_titles": [item.title for item in results[:3]],
+    }
+
+
 def cmd_listen(
     repo: Repository,
     adapter: MusicdlAdapter,
@@ -1986,18 +2082,37 @@ def cmd_listen(
 ) -> dict[str, Any]:
     target_provider = provider or MYFREEJUICES_PROVIDER
     checked_steps: list[str] = []
+    auth_guidance: dict[str, Any] = {}
 
     if target_provider == MYFREEJUICES_PROVIDER:
         checked_steps.append("protected_provider_health")
         probe = adapter.probe_provider(MYFREEJUICES_PROVIDER, query)
         if probe.get("error") in {"missing_cf_clearance", "invalid_cf_clearance"} and refresh_auth:
-            checked_steps.append("protected_provider_refresh")
-            cmd_channel_auth_refresh(MYFREEJUICES_PROVIDER, auth_store, 180, "en")
-            probe = adapter.probe_provider(MYFREEJUICES_PROVIDER, query)
+            runtime = detect_visible_browser_runtime()
+            auth_guidance = {
+                "auth_action_required": True,
+                "auth_provider": MYFREEJUICES_PROVIDER,
+                "auth_reason": probe.get("error"),
+                "recommended_command": "bash scripts/musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance \"COOKIE_VALUE\"",
+                "refresh_available": runtime["can_refresh"],
+            }
+            if runtime["can_refresh"]:
+                checked_steps.append("protected_provider_refresh")
+                cmd_channel_auth_refresh(MYFREEJUICES_PROVIDER, auth_store, 180, "en")
+                probe = adapter.probe_provider(MYFREEJUICES_PROVIDER, query)
+                if probe.get("error") not in {"missing_cf_clearance", "invalid_cf_clearance"}:
+                    auth_guidance = {}
+            else:
+                checked_steps.append("protected_provider_refresh_skipped")
+                auth_guidance["auth_runtime_error"] = runtime["reason"]
+                auth_guidance["auth_runtime_message"] = runtime["message"]
 
     if target_provider:
         checked_steps.append("provider_scoped_search")
-        scoped = cmd_channel_search_variants(repo, adapter, target_provider, query, 8)
+        try:
+            scoped = cmd_channel_search_variants(repo, adapter, target_provider, query, 8)
+        except SystemExit:
+            scoped = {"query": query, "provider_scope": target_provider, "count": 0, "items": []}
         items = scoped["items"]
         if items:
             chosen_item = sorted(items, key=lambda item: listen_item_score(query, item), reverse=True)[0]
@@ -2008,7 +2123,7 @@ def cmd_listen(
                 chosen_item["track_id"],
                 target_provider,
                 dry_run,
-                refresh_health=True,
+                refresh_health=False,
             )
             return {
                 "query": query,
@@ -2016,6 +2131,7 @@ def cmd_listen(
                 "checked_steps": checked_steps,
                 "provider_scope": target_provider,
                 "selected_track": next((item for item in items if item["track_id"] == chosen_item["track_id"]), chosen_item),
+                **auth_guidance,
                 **decision,
             }
 
@@ -2037,7 +2153,7 @@ def cmd_listen(
         chosen_item["track_id"],
         None if provider == MYFREEJUICES_PROVIDER else provider,
         dry_run,
-        refresh_health=True,
+        refresh_health=False,
     )
     return {
         "query": query,
@@ -2045,6 +2161,7 @@ def cmd_listen(
         "checked_steps": checked_steps,
         "provider_scope": provider or "default_sources",
         "selected_track": next((item for item in broad["items"] if item["track_id"] == chosen_item["track_id"]), chosen_item),
+        **auth_guidance,
         **decision,
     }
 
@@ -2098,6 +2215,12 @@ def build_parser() -> argparse.ArgumentParser:
     channel_auth_set.add_argument("--cf-clearance", required=True)
     channel_auth_set.add_argument("--lang", default="en")
     channel_auth_set.add_argument("--user-agent", default="")
+    channel_auth_show = channel_auth_sub.add_parser("show")
+    channel_auth_show.add_argument("--provider", required=True)
+    channel_auth_validate = channel_auth_sub.add_parser("validate")
+    channel_auth_validate.add_argument("--provider", required=True)
+    channel_auth_clear = channel_auth_sub.add_parser("clear")
+    channel_auth_clear.add_argument("--provider", required=True)
 
     channels_health = sub.add_parser("channels-health")
     channels_health.add_argument("--limit", type=int, default=20)
@@ -2254,6 +2377,12 @@ def main() -> None:
             print_json(cmd_channel_auth_refresh(args.provider, auth_store, args.timeout, args.lang))
         elif args.channel_auth_action == "set":
             print_json(cmd_channel_auth_set(args.provider, auth_store, args.cf_clearance, args.lang, args.user_agent))
+        elif args.channel_auth_action == "show":
+            print_json(cmd_channel_auth_show(args.provider, auth_store))
+        elif args.channel_auth_action == "validate":
+            print_json(cmd_channel_auth_validate(adapter, args.provider, auth_store))
+        elif args.channel_auth_action == "clear":
+            print_json(cmd_channel_auth_clear(args.provider, auth_store))
     elif args.command == "channels-health":
         print_json(cmd_channels_health(repo, adapter, args.limit, args.refresh, args.provider))
     elif args.command == "analyze":

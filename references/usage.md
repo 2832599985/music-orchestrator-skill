@@ -62,23 +62,24 @@ export MUSIC_ORCH_MYFREEJUICES_LANG="en"
 Search:
 
 ```bash
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-search --provider MyFreeMP3JuicesMusicClient --query "city pop 夜晚" --limit 12
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-search-variants --provider MyFreeMP3JuicesMusicClient --query "city pop 夜晚" --limit 12
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health --refresh
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health --provider JBSouMusicClient
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health --provider JBSouMusicClient --refresh
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl search-preview --query "city pop 夜晚" --type mixed --limit 15
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth show --provider MyFreeMP3JuicesMusicClient
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth validate --provider MyFreeMP3JuicesMusicClient
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth clear --provider MyFreeMP3JuicesMusicClient
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-search --provider MyFreeMP3JuicesMusicClient --query "city pop 夜晚" --limit 12
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-search-variants --provider MyFreeMP3JuicesMusicClient --query "city pop 夜晚" --limit 12
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health --refresh
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl search-preview --query "city pop 夜晚" --type mixed --limit 15
 
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl search \
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl search \
   --query "city pop 夜晚" \
   --type mixed \
   --limit 15
 
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl search-variants \
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl search-variants \
   --query "city pop 夜晚" \
   --type mixed \
   --limit 15
@@ -178,6 +179,8 @@ Push:
   The protected MyFreeMP3Juices provider is enabled but has no local auth state yet. Run `channel-auth refresh` or `channel-auth set`.
 - `invalid_cf_clearance`
   The saved or exported `cf_clearance` is expired. Refresh it with `channel-auth refresh` or replace it with `channel-auth set`.
+- `gui_unavailable`
+  Visible-browser refresh is unavailable on this machine. Use `channel-auth set` instead of `channel-auth refresh`.
 - `No collection found`
   Create a playlist or save some tracks first.
 - `No downloadable variant`

@@ -117,28 +117,25 @@ git clone https://github.com/2832599985/music-orchestrator-skill.git \
 示例：
 
 ```bash
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-search --provider MyFreeMP3JuicesMusicClient --query "Minami Kawakiwoameku" --limit 8
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health --refresh
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl search --query "city pop 夜晚" --type mixed --limit 10
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl analyze --collection likes
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl recommend --collection likes --limit 12
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl playlist create --name "今晚循环"
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl variants --track-id TRACK_ID
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download choose --track-id TRACK_ID --refresh-health
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download track --track-id TRACK_ID --provider JBSouMusicClient
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth show --provider MyFreeMP3JuicesMusicClient
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth validate --provider MyFreeMP3JuicesMusicClient
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-search --provider MyFreeMP3JuicesMusicClient --query "Minami Kawakiwoameku" --limit 8
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl listen --query "家有女友 主题曲"
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download choose --track-id TRACK_ID --dry-run
 ```
 
 推荐听歌/下载流程：
 
 1. 用户说“我要听歌”时，优先直接用 `musicctl listen --query "..."`
 2. skill 应先尝试 `MyFreeMP3JuicesMusicClient`
-3. 如果缺少 auth，就先执行 `musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient`
-4. 如果你手上已经有新的 cookie，也可以直接执行 `musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"`
-5. 需要只查这个默认渠道时，用 `channel-search` 或 `channel-search-variants`
-6. 只有当你想手动控制 provider 时，再用 `download choose` 或 `download track --provider ...`
+3. 先用 `channel-auth show` 或 `channel-auth validate` 看当前 auth 是否可用
+4. 在无图形环境里，优先执行 `channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"`
+5. 只有在有可见浏览器时，再执行 `channel-auth refresh --provider MyFreeMP3JuicesMusicClient`
+6. 需要只查这个默认渠道时，用 `channel-search` 或 `channel-search-variants`
+7. 只有当你想手动控制 provider 时，再用 `download choose` 或 `download track --provider ...`
 
 ## Provider 健康探针
 
@@ -171,13 +168,21 @@ git clone https://github.com/2832599985/music-orchestrator-skill.git \
 - 环境变量可以覆盖本地状态：
   - `MUSIC_ORCH_MYFREEJUICES_CF_CLEARANCE`
   - `MUSIC_ORCH_MYFREEJUICES_LANG`
+- 对 Codex 安装版，建议统一用 `bash scripts/musicctl ...`，因为安装器可能不会保留可执行位
+- 可以先查看当前 auth：
+  `bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth show --provider MyFreeMP3JuicesMusicClient`
+- 可以校验当前 auth：
+  `bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth validate --provider MyFreeMP3JuicesMusicClient`
 - 可以通过下面的命令刷新本地 auth：
-  `~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient`
+  `bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient`
 - 也可以手动设置：
-  `~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"`
+  `bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"`
+- 也可以清除本地保存的 auth：
+  `bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth clear --provider MyFreeMP3JuicesMusicClient`
 - `channel-auth refresh` 依赖本机 Playwright 和 Chromium：
   `pip install playwright`
   `python3 -m playwright install chromium`
+- 在无图形界面的 Ubuntu 上，优先用 `channel-auth set`，因为可见浏览器刷新需要 GUI 运行环境
 
 ## 文档入口
 

@@ -117,28 +117,25 @@ Expected layout after install:
 Examples:
 
 ```bash
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-search --provider MyFreeMP3JuicesMusicClient --query "Minami Kawakiwoameku" --limit 8
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health --refresh
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl search --query "city pop 夜晚" --type mixed --limit 10
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl analyze --collection likes
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl recommend --collection likes --limit 12
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl playlist create --name "今晚循环"
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl variants --track-id TRACK_ID
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download choose --track-id TRACK_ID --refresh-health
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download track --track-id TRACK_ID --provider JBSouMusicClient
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth show --provider MyFreeMP3JuicesMusicClient
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth validate --provider MyFreeMP3JuicesMusicClient
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-search --provider MyFreeMP3JuicesMusicClient --query "Minami Kawakiwoameku" --limit 8
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl listen --query "家有女友 主题曲"
+bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download choose --track-id TRACK_ID --dry-run
 ```
 
 Recommended listen/download flow:
 
 1. Use `musicctl listen --query "..."` when the user wants to hear a song now
 2. The skill should first try `MyFreeMP3JuicesMusicClient`
-3. If auth is missing, refresh it with `musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient`
-4. If you already have a fresh cookie value, set it directly with `musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"`
-5. Use `channel-search` or `channel-search-variants` when you need provider-only inspection
-6. Use `download choose` or `download track --provider ...` only when you want manual provider control
+3. Use `channel-auth show` or `channel-auth validate` to inspect the protected provider before retrying downloads
+4. On headless systems, prefer `channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"`
+5. Use `channel-auth refresh --provider MyFreeMP3JuicesMusicClient` only when a visible browser is available
+6. Use `channel-search` or `channel-search-variants` when you need provider-only inspection
+7. Use `download choose` or `download track --provider ...` only when you want manual provider control
 
 ## Provider Health
 
@@ -170,13 +167,21 @@ Probe results are persisted into `provider_health`.
 - Environment variables override the saved state:
   - `MUSIC_ORCH_MYFREEJUICES_CF_CLEARANCE`
   - `MUSIC_ORCH_MYFREEJUICES_LANG`
+- For Codex-installed copies, prefer `bash scripts/musicctl ...` because the installer may not preserve executable permissions.
+- You can inspect the saved auth with:
+  `bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth show --provider MyFreeMP3JuicesMusicClient`
+- You can validate the saved auth with:
+  `bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth validate --provider MyFreeMP3JuicesMusicClient`
 - You can refresh local auth state with:
-  `~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient`
+  `bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient`
 - You can also set it manually:
-  `~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"`
+  `bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth set --provider MyFreeMP3JuicesMusicClient --cf-clearance "COOKIE_VALUE"`
+- You can clear the saved auth with:
+  `bash ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth clear --provider MyFreeMP3JuicesMusicClient`
 - `channel-auth refresh` requires local Playwright and Chromium:
   `pip install playwright`
   `python3 -m playwright install chromium`
+- On headless Ubuntu, prefer `channel-auth set` because visible-browser refresh requires a GUI runtime.
 
 ## Documentation
 

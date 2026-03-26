@@ -189,6 +189,15 @@ class ProviderAuthStore:
         self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return config
 
+    def clear(self, provider: str) -> bool:
+        payload = self.load()
+        if provider not in payload:
+            return False
+        del payload[provider]
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return True
+
 
 class EmbeddedProvider:
     name = "EmbeddedProvider"
