@@ -33,7 +33,7 @@ It is designed as an orchestrator rather than a thin search wrapper, so the mode
 
 ## Resource Scope
 
-This skill is intended to operate on music resources that the user personally owns, uploaded, manages, or is otherwise authorized to access, including personal cloud-drive and personal storage links.
+This skill is intended to operate on music resources that the user personally owns, uploaded, manages, or is otherwise authorized to access, including personal cloud-drive and personal storage links that the user states are authorized.
 
 Within this workflow, those links are treated as user-provided personal resources. The project does not independently verify ownership, licensing status, or legal entitlement, and it is not a legal review tool.
 

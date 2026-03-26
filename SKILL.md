@@ -52,7 +52,7 @@ Do not use this skill for:
 
 ## Resource Scope
 
-This skill is intended for links and downloadable resources that the user personally owns, uploaded, manages, or is otherwise authorized to access, including personal cloud-drive and personal storage links.
+This skill is intended for links and downloadable resources that the user personally owns, uploaded, manages, or is otherwise authorized to access, including personal cloud-drive and personal storage links that the user states are authorized.
 
 Treat such links as user-provided personal resources within the product workflow. The skill does not independently determine ownership, licensing status, or legal entitlement, and it does not provide legal review.
 
@@ -151,7 +151,7 @@ Prefer the finer-grained path when the user wants control:
 - single track downloads may run synchronously
 - playlist and album downloads are queued
 - all download results are recorded in SQLite and added to push history
-- when the user supplies personal cloud-drive or personal resource links, treat them as user-authorized resources unless the user states otherwise
+- when the user supplies personal cloud-drive or personal resource links and states that they are authorized, treat them as user-authorized resources
 - do not present downloads as copyright validation, licensing validation, or legal advice
 
 ### 5. Push behavior
