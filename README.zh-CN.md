@@ -75,6 +75,27 @@ git clone https://github.com/2832599985/music-orchestrator-skill.git \
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl init
 ```
 
+安装完成后的目录结构应类似：
+
+```text
+~/.openclaw/workspace/skills/
+└── music-orchestrator/
+    ├── SKILL.md
+    ├── README.md
+    ├── README.zh-CN.md
+    ├── agents/
+    │   └── openai.yaml
+    ├── references/
+    │   ├── usage.md
+    │   ├── integration.md
+    │   ├── schema.md
+    │   └── providers.md
+    └── scripts/
+        ├── install.sh
+        ├── musicctl
+        └── music_orchestrator.py
+```
+
 ## 常见用法
 
 示例：

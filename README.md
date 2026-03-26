@@ -75,6 +75,27 @@ Then run:
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl init
 ```
 
+Expected layout after install:
+
+```text
+~/.openclaw/workspace/skills/
+└── music-orchestrator/
+    ├── SKILL.md
+    ├── README.md
+    ├── README.zh-CN.md
+    ├── agents/
+    │   └── openai.yaml
+    ├── references/
+    │   ├── usage.md
+    │   ├── integration.md
+    │   ├── schema.md
+    │   └── providers.md
+    └── scripts/
+        ├── install.sh
+        ├── musicctl
+        └── music_orchestrator.py
+```
+
 ## Typical Usage
 
 Examples:
