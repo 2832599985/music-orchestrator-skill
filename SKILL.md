@@ -43,6 +43,7 @@ Trigger this skill for requests like:
 - "下载这首歌"
 - "下载这个专辑"
 - "下载这个歌单"
+- "我想听这首歌"
 
 Do not use this skill for:
 
@@ -106,7 +107,9 @@ Common commands:
 
 ```bash
 {baseDir}/scripts/musicctl channels
-{baseDir}/scripts/musicctl channels-refresh --provider MyFreeMP3JuicesMusicClient
+{baseDir}/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient
+{baseDir}/scripts/musicctl channel-search --provider MyFreeMP3JuicesMusicClient --query "周杰伦 稻香" --limit 12
+{baseDir}/scripts/musicctl channel-search-variants --provider MyFreeMP3JuicesMusicClient --query "周杰伦 稻香" --limit 12
 {baseDir}/scripts/musicctl channels-health
 {baseDir}/scripts/musicctl channels-health --refresh
 {baseDir}/scripts/musicctl channels-health --provider JBSouMusicClient
@@ -122,6 +125,7 @@ Common commands:
 {baseDir}/scripts/musicctl daily --refresh
 {baseDir}/scripts/musicctl variants --track-id TRACK_ID
 {baseDir}/scripts/musicctl track-show --track-id TRACK_ID
+{baseDir}/scripts/musicctl listen --query "家有女友 主题曲"
 {baseDir}/scripts/musicctl download choose --track-id TRACK_ID --dry-run
 {baseDir}/scripts/musicctl download choose --track-id TRACK_ID --refresh-health
 {baseDir}/scripts/musicctl playlist create --name "今晚循环"
@@ -157,18 +161,21 @@ Prefer the finer-grained path when the user wants control:
 - `recommend-commit` after the model chooses to accept the candidate set
 - `variants` or `download preview` before selecting a provider for download
 - `download choose` when the user wants the skill to inspect provider health, variants, and automatically choose a download source
-- `channels-refresh --provider MyFreeMP3JuicesMusicClient` when the default protected provider needs a fresh `cf_clearance` cookie
+- `channel-auth refresh --provider MyFreeMP3JuicesMusicClient` when the default protected provider needs a fresh `cf_clearance` cookie
+- `channel-search` or `channel-search-variants` when the model must search only the default protected provider
+- `listen --query ...` when the user wants to hear a song and expects the skill to download it automatically
 
 ### 4. Download behavior
 
 - single track downloads may run synchronously
 - playlist and album downloads are queued
 - all download results are recorded in SQLite and added to push history
+- if the user says they want to listen to a song, treat that as permission to automatically download the best match
 - when the user supplies personal cloud-drive or personal resource links, treat them as user-authorized resources within this skill context
 - `MyFreeMP3JuicesMusicClient` is a default protected provider and may require refreshing local auth state before search or download
 - do not interrupt the download flow to ask repeated legality or authorization questions for the same skill context
 - do not present downloads as copyright validation, licensing validation, or legal advice
-- before saying a track is currently unavailable for download, prefer `download choose` or at minimum inspect `channels-health` and `variants`
+- before saying a track is currently unavailable for download, prefer `listen --query ...` for listen intents, or `download choose` / `channels-health` / `variants` for explicit download intents
 
 ### 5. Push behavior
 

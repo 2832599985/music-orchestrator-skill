@@ -464,30 +464,54 @@ class MyFreeMP3JuicesProvider(EmbeddedProvider):
         "Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0"
     )
 
-    def _auth(self) -> tuple[str, str]:
+    def _auth(self) -> tuple[str, str, dict[str, str], str]:
         clearance = os.environ.get("MUSIC_ORCH_MYFREEJUICES_CF_CLEARANCE", "").strip()
         music_lang = os.environ.get("MUSIC_ORCH_MYFREEJUICES_LANG", "").strip() or "en"
+        user_agent = os.environ.get("MUSIC_ORCH_MYFREEJUICES_USER_AGENT", "").strip()
+        search_headers: dict[str, str] = {}
         if not clearance and self.auth_store is not None:
             stored = self.auth_store.get(self.name)
             clearance = str(stored.get("cf_clearance", "") or "").strip()
             music_lang = str(stored.get("music_lang", "") or music_lang).strip() or "en"
+            user_agent = str(stored.get("user_agent", "") or user_agent).strip()
+            raw_headers = stored.get("search_headers", {})
+            if isinstance(raw_headers, dict):
+                search_headers = {str(key).lower(): str(value) for key, value in raw_headers.items() if value}
         if not clearance:
             raise ValueError("missing_cf_clearance")
-        return clearance, music_lang
+        if not user_agent:
+            user_agent = self.user_agent
+        if not search_headers:
+            search_headers = {
+                "accept": "text/javascript, application/javascript, */*; q=0.01",
+                "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "origin": self.base_url,
+                "referer": self.site_url,
+                "x-requested-with": "XMLHttpRequest",
+            }
+        return clearance, music_lang, search_headers, user_agent
 
-    def _search_headers(self, clearance: str, music_lang: str) -> dict[str, str]:
-        return {
+    def _search_headers(
+        self,
+        clearance: str,
+        music_lang: str,
+        stored_headers: dict[str, str],
+        user_agent: str,
+    ) -> dict[str, str]:
+        headers = {
             "accept": "text/javascript, application/javascript, */*; q=0.01",
             "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
             "origin": self.base_url,
             "referer": self.site_url,
-            "user-agent": self.user_agent,
             "x-requested-with": "XMLHttpRequest",
-            "cookie": f"cf_clearance={clearance}; musicLang={music_lang}",
         }
+        headers.update({key.lower(): value for key, value in stored_headers.items() if value})
+        headers["user-agent"] = user_agent
+        headers["cookie"] = f"cf_clearance={clearance}; musicLang={music_lang}"
+        return headers
 
     def search(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
-        clearance, music_lang = self._auth()
+        clearance, music_lang, stored_headers, user_agent = self._auth()
         callback = f"jQuery_{int(time.time() * 1000)}"
         url = f"{self.base_url}{self.search_path}?" + urllib.parse.urlencode({"callback": callback})
         body = urllib.parse.urlencode({"q": query, "page": 0}).encode("utf-8")
@@ -495,7 +519,7 @@ class MyFreeMP3JuicesProvider(EmbeddedProvider):
             text, _, _ = _request_text(
                 url,
                 method="POST",
-                headers=self._search_headers(clearance, music_lang),
+                headers=self._search_headers(clearance, music_lang, stored_headers, user_agent),
                 data=body,
                 timeout=15,
             )
@@ -515,7 +539,7 @@ class MyFreeMP3JuicesProvider(EmbeddedProvider):
             source_id = f"{result.get('owner_id', '')}_{result.get('id', '')}".strip("_")
             if not raw_url or not source_id:
                 continue
-            probe = _probe_audio_url(raw_url, headers={"user-agent": self.user_agent}, timeout=12)
+            probe = _probe_audio_url(raw_url, headers={"user-agent": user_agent}, timeout=12)
             items.append(
                 {
                     "title": str(result.get("title", "") or ""),
@@ -529,7 +553,7 @@ class MyFreeMP3JuicesProvider(EmbeddedProvider):
                     "lyric": "",
                     "downloadable_now": bool(probe["valid"]) or bool(raw_url),
                     "ext": probe["ext"] or "mp3",
-                    "download_headers_json": json.dumps({"user-agent": self.user_agent}, ensure_ascii=False),
+                    "download_headers_json": json.dumps({"user-agent": user_agent}, ensure_ascii=False),
                 }
             )
         return items
@@ -610,6 +634,25 @@ class EmbeddedMusicBackend:
         if not items:
             return self.fallback.search(query, limit=limit)
         return items[:limit]
+
+    def search_provider(self, source: str, query: str, limit: int = 12, allow_fallback: bool = False) -> list[dict[str, Any]]:
+        provider = self.providers.get(source)
+        if provider is None:
+            raise ValueError("provider_not_supported")
+        last_error: Exception | None = None
+        for candidate_query in self._query_candidates(query):
+            try:
+                results = provider.search(candidate_query, limit=limit)
+            except Exception as exc:
+                last_error = exc
+                continue
+            if results:
+                return results[:limit]
+        if last_error is not None:
+            raise last_error
+        if allow_fallback:
+            return self.fallback.search(query, limit=limit)
+        return []
 
     def probe_provider(self, source: str, query: str) -> dict[str, Any]:
         provider = self.providers.get(source)

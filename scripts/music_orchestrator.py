@@ -937,6 +937,10 @@ class MusicdlAdapter:
     def probe_provider(self, source: str, query: str = "Jay Chou") -> dict[str, Any]:
         return self.backend.probe_provider(source, query)
 
+    def search_provider(self, source: str, query: str, limit: int = 12, allow_fallback: bool = False) -> list[CandidateTrack]:
+        raw = self.backend.search_provider(source, query, limit=limit, allow_fallback=allow_fallback)
+        return [CandidateTrack(**item) for item in raw]
+
 
 class ProfileAnalyzer:
     def analyze(self, rows: list[sqlite3.Row]) -> dict[str, Any]:
@@ -1163,6 +1167,28 @@ def candidate_match_score(track: sqlite3.Row | dict[str, Any], candidate: Candid
     return (title_score, artist_score, downloadable_score)
 
 
+def listen_item_score(query: str, item: dict[str, Any]) -> tuple[int, int, int]:
+    normalized_query = normalize_text(query)
+    title = normalize_text(item.get("title", ""))
+    artists = normalize_text(item.get("artists", ""))
+    title_score = 0
+    if normalized_query and title:
+        if normalized_query == title:
+            title_score = 5
+        elif normalized_query in title or title in normalized_query:
+            title_score = 4
+        elif any(token and token in title for token in normalized_query.split(" ")):
+            title_score = 2
+    artist_score = 0
+    if normalized_query and artists:
+        if artists in normalized_query:
+            artist_score = 2
+        elif any(token and token in artists for token in normalized_query.split(" ")):
+            artist_score = 1
+    downloadable_score = 1 if any(v.get("downloadable_now") and v.get("download_url_present") for v in item.get("variants", [])) else 0
+    return (title_score, artist_score, downloadable_score)
+
+
 def load_provider_health(
     repo: Repository,
     adapter: MusicdlAdapter,
@@ -1330,6 +1356,16 @@ def cmd_search_preview(adapter: MusicdlAdapter, query: str, search_type: str, li
     }
 
 
+def cmd_channel_search_preview(adapter: MusicdlAdapter, provider: str, query: str, limit: int) -> dict[str, Any]:
+    candidates = adapter.search_provider(provider, query, limit=limit, allow_fallback=False)
+    return {
+        "query": query,
+        "provider_scope": provider,
+        "count": len(candidates),
+        "items": [candidate_to_dict(candidate) for candidate in candidates],
+    }
+
+
 def cmd_search(repo: Repository, adapter: MusicdlAdapter, query: str, search_type: str, limit: int) -> dict[str, Any]:
     candidates = adapter.search(query)[:limit]
     saved = repo.save_candidates(candidates)
@@ -1337,6 +1373,30 @@ def cmd_search(repo: Repository, adapter: MusicdlAdapter, query: str, search_typ
     return {
         "query": query,
         "type": search_type,
+        "count": len(saved),
+        "items": [
+            {
+                "track_id": row["id"],
+                "title": row["title"],
+                "artists": row["artists"],
+                "album": row["album"],
+                "duration": row["duration"],
+            }
+            for row in saved
+        ],
+    }
+
+
+def cmd_channel_search(repo: Repository, adapter: MusicdlAdapter, provider: str, query: str, limit: int) -> dict[str, Any]:
+    try:
+        candidates = adapter.search_provider(provider, query, limit=limit, allow_fallback=False)
+    except Exception as exc:  # noqa: BLE001
+        raise SystemExit(str(exc)) from exc
+    saved = repo.save_candidates(candidates)
+    repo.log_search(query, f"provider:{provider}", [asdict(c) for c in candidates])
+    return {
+        "query": query,
+        "provider_scope": provider,
         "count": len(saved),
         "items": [
             {
@@ -1360,6 +1420,20 @@ def cmd_search_variants(repo: Repository, adapter: MusicdlAdapter, query: str, s
     return {
         "query": saved["query"],
         "type": saved["type"],
+        "count": len(items),
+        "items": items,
+    }
+
+
+def cmd_channel_search_variants(repo: Repository, adapter: MusicdlAdapter, provider: str, query: str, limit: int) -> dict[str, Any]:
+    saved = cmd_channel_search(repo, adapter, provider, query, limit)
+    items: list[dict[str, Any]] = []
+    for item in saved["items"]:
+        variants = [v for v in repo.get_track_variants(item["track_id"]) if v["provider"] == provider]
+        items.append({**item, "variants": [variant_to_dict(v) for v in variants]})
+    return {
+        "query": saved["query"],
+        "provider_scope": provider,
         "count": len(items),
         "items": items,
     }
@@ -1779,10 +1853,15 @@ def cmd_channels_refresh(
     deadline_ms = max(30, timeout) * 1000
     cf_clearance = ""
     detected_lang = music_lang or "en"
+    detected_user_agent = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0"
+    )
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=False)
-        context = browser.new_context()
+        context = browser.new_context(user_agent=detected_user_agent)
         context.add_cookies(
             [
                 {
@@ -1821,6 +1900,14 @@ def cmd_channels_refresh(
         {
             "cf_clearance": cf_clearance,
             "music_lang": detected_lang or "en",
+            "user_agent": detected_user_agent,
+            "search_headers": {
+                "accept": "text/javascript, application/javascript, */*; q=0.01",
+                "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "origin": site_url.rstrip("/"),
+                "referer": site_url,
+                "x-requested-with": "XMLHttpRequest",
+            },
             "updated_at": utc_now(),
             "site": site_url,
         },
@@ -1833,6 +1920,85 @@ def cmd_channels_refresh(
         "cookie_found": True,
         "cf_clearance_preview": redact_secret(cf_clearance),
         "music_lang": record["music_lang"],
+    }
+
+
+def cmd_channel_auth_refresh(provider: str, auth_store: ProviderAuthStore, timeout: int, music_lang: str) -> dict[str, Any]:
+    return cmd_channels_refresh(provider, auth_store, timeout, music_lang)
+
+
+def cmd_listen(
+    repo: Repository,
+    adapter: MusicdlAdapter,
+    worker: DownloadQueueWorker,
+    auth_store: ProviderAuthStore,
+    query: str,
+    provider: str | None,
+    dry_run: bool,
+    refresh_auth: bool,
+) -> dict[str, Any]:
+    target_provider = provider or MYFREEJUICES_PROVIDER
+    checked_steps: list[str] = []
+
+    if target_provider == MYFREEJUICES_PROVIDER:
+        checked_steps.append("protected_provider_health")
+        probe = adapter.probe_provider(MYFREEJUICES_PROVIDER, query)
+        if probe.get("error") in {"missing_cf_clearance", "invalid_cf_clearance"} and refresh_auth:
+            checked_steps.append("protected_provider_refresh")
+            cmd_channel_auth_refresh(MYFREEJUICES_PROVIDER, auth_store, 180, "en")
+            probe = adapter.probe_provider(MYFREEJUICES_PROVIDER, query)
+
+    if target_provider:
+        checked_steps.append("provider_scoped_search")
+        scoped = cmd_channel_search_variants(repo, adapter, target_provider, query, 8)
+        items = scoped["items"]
+        if items:
+            chosen_item = sorted(items, key=lambda item: listen_item_score(query, item), reverse=True)[0]
+            decision = cmd_download_choose(
+                repo,
+                adapter,
+                worker,
+                chosen_item["track_id"],
+                target_provider,
+                dry_run,
+                refresh_health=True,
+            )
+            return {
+                "query": query,
+                "intent": "listen",
+                "checked_steps": checked_steps,
+                "provider_scope": target_provider,
+                "selected_track": next((item for item in items if item["track_id"] == chosen_item["track_id"]), chosen_item),
+                **decision,
+            }
+
+    checked_steps.append("default_provider_search")
+    broad = cmd_search_variants(repo, adapter, query, "mixed", 8)
+    if not broad["items"]:
+        return {
+            "query": query,
+            "intent": "listen",
+            "checked_steps": checked_steps,
+            "status": "unavailable",
+            "failure_reason": "no_search_results",
+        }
+    chosen_item = sorted(broad["items"], key=lambda item: listen_item_score(query, item), reverse=True)[0]
+    decision = cmd_download_choose(
+        repo,
+        adapter,
+        worker,
+        chosen_item["track_id"],
+        None if provider == MYFREEJUICES_PROVIDER else provider,
+        dry_run,
+        refresh_health=True,
+    )
+    return {
+        "query": query,
+        "intent": "listen",
+        "checked_steps": checked_steps,
+        "provider_scope": provider or "default_sources",
+        "selected_track": next((item for item in broad["items"] if item["track_id"] == chosen_item["track_id"]), chosen_item),
+        **decision,
     }
 
 
@@ -1857,12 +2023,29 @@ def build_parser() -> argparse.ArgumentParser:
     search_variants.add_argument("--type", default="mixed")
     search_variants.add_argument("--limit", type=int, default=12)
 
+    channel_search = sub.add_parser("channel-search")
+    channel_search.add_argument("--provider", required=True)
+    channel_search.add_argument("--query", required=True)
+    channel_search.add_argument("--limit", type=int, default=12)
+
+    channel_search_variants = sub.add_parser("channel-search-variants")
+    channel_search_variants.add_argument("--provider", required=True)
+    channel_search_variants.add_argument("--query", required=True)
+    channel_search_variants.add_argument("--limit", type=int, default=12)
+
     sub.add_parser("channels")
 
     channels_refresh = sub.add_parser("channels-refresh")
     channels_refresh.add_argument("--provider", required=True)
     channels_refresh.add_argument("--timeout", type=int, default=180)
     channels_refresh.add_argument("--lang", default="en")
+
+    channel_auth = sub.add_parser("channel-auth")
+    channel_auth_sub = channel_auth.add_subparsers(dest="channel_auth_action", required=True)
+    channel_auth_refresh = channel_auth_sub.add_parser("refresh")
+    channel_auth_refresh.add_argument("--provider", required=True)
+    channel_auth_refresh.add_argument("--timeout", type=int, default=180)
+    channel_auth_refresh.add_argument("--lang", default="en")
 
     channels_health = sub.add_parser("channels-health")
     channels_health.add_argument("--limit", type=int, default=20)
@@ -1908,6 +2091,12 @@ def build_parser() -> argparse.ArgumentParser:
     history = sub.add_parser("history")
     history.add_argument("kind", choices=["search", "recommend"])
     history.add_argument("--limit", type=int, default=20)
+
+    listen = sub.add_parser("listen")
+    listen.add_argument("--query", required=True)
+    listen.add_argument("--provider")
+    listen.add_argument("--dry-run", action="store_true")
+    listen.add_argument("--refresh-auth", action="store_true", default=True)
 
     track_show = sub.add_parser("track-show")
     track_show.add_argument("--track-id", type=int, required=True)
@@ -2000,10 +2189,17 @@ def main() -> None:
         print_json(cmd_search_preview(adapter, args.query, args.type, args.limit))
     elif args.command == "search-variants":
         print_json(cmd_search_variants(repo, adapter, args.query, args.type, args.limit))
+    elif args.command == "channel-search":
+        print_json(cmd_channel_search(repo, adapter, args.provider, args.query, args.limit))
+    elif args.command == "channel-search-variants":
+        print_json(cmd_channel_search_variants(repo, adapter, args.provider, args.query, args.limit))
     elif args.command == "channels":
         print_json(cmd_channels(adapter))
     elif args.command == "channels-refresh":
         print_json(cmd_channels_refresh(args.provider, auth_store, args.timeout, args.lang))
+    elif args.command == "channel-auth":
+        if args.channel_auth_action == "refresh":
+            print_json(cmd_channel_auth_refresh(args.provider, auth_store, args.timeout, args.lang))
     elif args.command == "channels-health":
         print_json(cmd_channels_health(repo, adapter, args.limit, args.refresh, args.provider))
     elif args.command == "analyze":
@@ -2030,6 +2226,8 @@ def main() -> None:
         print_json(cmd_push_mark_consumed(repo, args.id))
     elif args.command == "history":
         print_json(cmd_history(repo, args.kind, args.limit))
+    elif args.command == "listen":
+        print_json(cmd_listen(repo, adapter, worker, auth_store, args.query, args.provider, args.dry_run, args.refresh_auth))
     elif args.command == "track-show":
         print_json(cmd_track_show(repo, args.track_id))
     elif args.command == "variants":

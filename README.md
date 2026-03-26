@@ -58,6 +58,9 @@ Current command surface includes:
 - `variants`
 - `channels`
 - `channels-refresh`
+- `channel-auth refresh`
+- `channel-search`
+- `channel-search-variants`
 - `channels-health`
 - `playlist create|list|show|add|remove|delete|rename`
 - `collection list|show|create|add|remove|merge`
@@ -67,6 +70,7 @@ Current command surface includes:
 - `push-show`
 - `push-mark-consumed`
 - `download choose|track|playlist|album|preview|queue|status|files|retry|cancel`
+- `listen`
 
 ## Install
 
@@ -114,7 +118,8 @@ Examples:
 
 ```bash
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-refresh --provider MyFreeMP3JuicesMusicClient
+~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient
+~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-search --provider MyFreeMP3JuicesMusicClient --query "Minami Kawakiwoameku" --limit 8
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health --refresh
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl search --query "city pop 夜晚" --type mixed --limit 10
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl analyze --collection likes
@@ -125,13 +130,13 @@ Examples:
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download track --track-id TRACK_ID --provider JBSouMusicClient
 ```
 
-Recommended download flow:
+Recommended listen/download flow:
 
-1. Inspect channels with `musicctl channels`
-2. Probe health with `musicctl channels-health --refresh`
-3. Check source variants with `musicctl variants --track-id ...`
-4. Prefer `musicctl download choose --track-id ... --refresh-health`
-5. Download explicitly with `musicctl download track --track-id ... --provider ...` only when you want manual provider control
+1. Use `musicctl listen --query "..."` when the user wants to hear a song now
+2. The skill should first try `MyFreeMP3JuicesMusicClient`
+3. If auth is missing, refresh it with `musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient`
+4. Use `channel-search` or `channel-search-variants` when you need provider-only inspection
+5. Use `download choose` or `download track --provider ...` only when you want manual provider control
 
 ## Provider Health
 

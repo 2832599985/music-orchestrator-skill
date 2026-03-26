@@ -58,6 +58,9 @@
 - `variants`
 - `channels`
 - `channels-refresh`
+- `channel-auth refresh`
+- `channel-search`
+- `channel-search-variants`
 - `channels-health`
 - `playlist create|list|show|add|remove|delete|rename`
 - `collection list|show|create|add|remove|merge`
@@ -67,6 +70,7 @@
 - `push-show`
 - `push-mark-consumed`
 - `download choose|track|playlist|album|preview|queue|status|files|retry|cancel`
+- `listen`
 
 ## 安装
 
@@ -114,7 +118,8 @@ git clone https://github.com/2832599985/music-orchestrator-skill.git \
 
 ```bash
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-refresh --provider MyFreeMP3JuicesMusicClient
+~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient
+~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-search --provider MyFreeMP3JuicesMusicClient --query "Minami Kawakiwoameku" --limit 8
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health --refresh
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl search --query "city pop 夜晚" --type mixed --limit 10
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl analyze --collection likes
@@ -125,13 +130,13 @@ git clone https://github.com/2832599985/music-orchestrator-skill.git \
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download track --track-id TRACK_ID --provider JBSouMusicClient
 ```
 
-推荐下载流程：
+推荐听歌/下载流程：
 
-1. 先用 `musicctl channels` 查看有哪些可用渠道
-2. 再用 `musicctl channels-health --refresh` 查看实时健康状态
-3. 用 `musicctl variants --track-id ...` 查看这首歌有哪些来源变体
-4. 优先用 `musicctl download choose --track-id ... --refresh-health` 自动选源
-5. 只有当你想手动控制 provider 时，再用 `musicctl download track --track-id ... --provider ...`
+1. 用户说“我要听歌”时，优先直接用 `musicctl listen --query "..."`
+2. skill 应先尝试 `MyFreeMP3JuicesMusicClient`
+3. 如果缺少 auth，就先执行 `musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient`
+4. 需要只查这个默认渠道时，用 `channel-search` 或 `channel-search-variants`
+5. 只有当你想手动控制 provider 时，再用 `download choose` 或 `download track --provider ...`
 
 ## Provider 健康探针
 

@@ -63,7 +63,9 @@ Search:
 
 ```bash
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels
-~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-refresh --provider MyFreeMP3JuicesMusicClient
+~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-auth refresh --provider MyFreeMP3JuicesMusicClient
+~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-search --provider MyFreeMP3JuicesMusicClient --query "city pop 夜晚" --limit 12
+~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channel-search-variants --provider MyFreeMP3JuicesMusicClient --query "city pop 夜晚" --limit 12
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health --refresh
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health --provider JBSouMusicClient
@@ -143,6 +145,7 @@ Download:
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download choose --track-id TRACK_ID --refresh-health
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download track --track-id TRACK_ID
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download track --track-id TRACK_ID --provider JBSouMusicClient
+~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl listen --query "家有女友 主题曲"
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download playlist --playlist "今晚循环"
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download album --album-id ALBUM_ID
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download queue --limit 10
@@ -171,9 +174,9 @@ Push:
 - `search fell back to iTunes`
   Embedded providers did not return usable results in time, so the skill returned search-only fallback metadata.
 - `missing_cf_clearance`
-  The protected MyFreeMP3Juices provider is enabled but has no local auth state yet. Run `channels-refresh`.
+  The protected MyFreeMP3Juices provider is enabled but has no local auth state yet. Run `channel-auth refresh`.
 - `invalid_cf_clearance`
-  The saved or exported `cf_clearance` is expired. Refresh it with `channels-refresh`.
+  The saved or exported `cf_clearance` is expired. Refresh it with `channel-auth refresh`.
 - `No collection found`
   Create a playlist or save some tracks first.
 - `No downloadable variant`
