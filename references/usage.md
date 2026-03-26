@@ -136,6 +136,8 @@ Download:
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl variants --track-id TRACK_ID
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl track-show --track-id TRACK_ID
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download preview --track-id TRACK_ID
+~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download choose --track-id TRACK_ID --dry-run
+~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download choose --track-id TRACK_ID --refresh-health
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download track --track-id TRACK_ID
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download track --track-id TRACK_ID --provider JBSouMusicClient
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download playlist --playlist "今晚循环"
@@ -169,5 +171,7 @@ Push:
   Create a playlist or save some tracks first.
 - `No downloadable variant`
   The candidate may be searchable but not currently downloadable.
+- `fallback_only_results`
+  The search fell back to `ITunesFallback` or another search-only source, so metadata exists but no direct download source was found.
 - `Batch job queued`
   This is expected for playlist and album downloads.

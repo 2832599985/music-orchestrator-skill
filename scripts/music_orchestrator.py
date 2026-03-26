@@ -1150,7 +1150,10 @@ class DownloadQueueWorker:
                     if not variants:
                         self.repo.log_download_file(job_id, track_id, "", "missing_variant", {})
                         continue
-                    chosen = next((v for v in variants if v["downloadable_now"]), variants[0])
+                    chosen = next((v for v in variants if v["downloadable_now"] and v["download_url"]), None)
+                    if chosen is None:
+                        self.repo.log_download_file(job_id, track_id, "", "missing_variant", {"reason": "no_downloadable_variant"})
+                        continue
                     result = self.adapter.download_variant(chosen, self.download_dir)
                     self.repo.log_download_file(job_id, track_id, result["path"], result["status"], result)
                 self.repo.mark_download_job(job_id, "completed", {"track_count": len(track_ids)})
@@ -1197,6 +1200,155 @@ def variant_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         "cover_url_present": bool(row["cover_url"]),
         "lyric_present": bool(row["lyric"]),
         "ext": row["ext"],
+    }
+
+
+def classify_provider_health(row: dict[str, Any]) -> dict[str, Any]:
+    latency_ms = int(row.get("latency_ms") or 0)
+    status = row.get("status", "")
+    if status == "ok":
+        if latency_ms < 4000:
+            severity = "healthy"
+        elif latency_ms < 10000:
+            severity = "degraded"
+        else:
+            severity = "slow"
+    elif status == "empty":
+        severity = "degraded"
+    elif status:
+        severity = "unhealthy"
+    else:
+        severity = "unknown"
+    return {**row, "severity": severity}
+
+
+def severity_rank(value: str) -> int:
+    order = {
+        "healthy": 0,
+        "degraded": 1,
+        "slow": 2,
+        "unhealthy": 3,
+        "unknown": 4,
+    }
+    return order.get(value, 4)
+
+
+def load_provider_health(
+    repo: Repository,
+    adapter: MusicdlAdapter,
+    providers: list[str],
+    refresh: bool,
+    probe_query: str,
+) -> list[dict[str, Any]]:
+    latest = {row["provider"]: classify_provider_health(row) for row in repo.latest_provider_health(max(50, len(providers) + 5))}
+    providers_to_probe = list(providers) if refresh else [provider for provider in providers if provider not in latest]
+    for provider in providers_to_probe:
+        probe = adapter.probe_provider(provider, probe_query)
+        repo.record_provider_health(
+            provider=probe["provider"],
+            probe_query=probe["probe_query"],
+            status=probe["status"],
+            latency_ms=probe["latency_ms"],
+            result_count=probe["result_count"],
+            downloadable_count=probe["downloadable_count"],
+            error=probe["error"],
+            payload=probe,
+        )
+        latest[provider] = classify_provider_health({**probe, "payload": probe, "created_at": utc_now()})
+    result: list[dict[str, Any]] = []
+    for provider in providers:
+        result.append(
+            latest.get(
+                provider,
+                classify_provider_health(
+                    {
+                        "provider": provider,
+                        "status": "",
+                        "latency_ms": 0,
+                        "result_count": 0,
+                        "downloadable_count": 0,
+                        "error": "",
+                        "payload": {},
+                    }
+                ),
+            )
+        )
+    return result
+
+
+def choose_download_variant(
+    repo: Repository,
+    adapter: MusicdlAdapter,
+    track_id: int,
+    provider: str | None = None,
+    refresh_health: bool = False,
+) -> dict[str, Any]:
+    track = repo.get_track(track_id)
+    if track is None:
+        raise SystemExit(f"Track not found: {track_id}")
+    variants = repo.get_track_variants(track_id)
+    if not variants:
+        raise SystemExit("No variants found for track")
+
+    channels = cmd_channels(adapter)
+    active_sources = list(adapter.sources)
+    if provider and provider not in active_sources:
+        raise SystemExit(f"Provider not active: {provider}")
+    fallback_only = set(channels.get("fallback_search_only", []))
+    probe_query = " ".join(part for part in [track["artists"], track["title"]] if part).strip() or "Jay Chou"
+    health = load_provider_health(repo, adapter, active_sources, refresh_health, probe_query)
+    health_by_provider = {row["provider"]: row for row in health}
+    provider_priority = {name: idx for idx, name in enumerate(DEFAULT_SOURCES)}
+
+    eligible_variants = [variant for variant in variants if variant["provider"] in active_sources and variant["provider"] not in fallback_only]
+    downloadable_variants = [variant for variant in eligible_variants if bool(variant["downloadable_now"]) and bool(variant["download_url"])]
+
+    def sort_key(variant: sqlite3.Row) -> tuple[int, int, int, int, int]:
+        health_row = health_by_provider.get(variant["provider"], {})
+        return (
+            severity_rank(health_row.get("severity", "unknown")),
+            int(health_row.get("latency_ms") or 999999),
+            -int(health_row.get("downloadable_count") or 0),
+            -int(health_row.get("result_count") or 0),
+            provider_priority.get(variant["provider"], len(provider_priority)),
+        )
+
+    chosen: sqlite3.Row | None = None
+    decision_reason = ""
+    failure_reason = ""
+
+    if provider:
+        chosen = next((variant for variant in variants if variant["provider"] == provider), None)
+        if chosen is None:
+            failure_reason = "provider_not_available_for_track"
+        elif chosen["provider"] in fallback_only:
+            failure_reason = "provider_is_search_only"
+            chosen = None
+        elif not chosen["downloadable_now"] or not chosen["download_url"]:
+            failure_reason = "provider_variant_not_downloadable"
+            chosen = None
+        else:
+            decision_reason = "user_selected_provider"
+    else:
+        if downloadable_variants:
+            chosen = sorted(downloadable_variants, key=sort_key)[0]
+            decision_reason = "best_downloadable_variant_by_health_and_provider_priority"
+        elif not eligible_variants and any(variant["provider"] in fallback_only for variant in variants):
+            failure_reason = "fallback_only_results"
+        else:
+            failure_reason = "no_downloadable_variant"
+
+    return {
+        "track": dict(track),
+        "channels": channels,
+        "provider_health": health,
+        "checked_providers": active_sources,
+        "variant_count": len(variants),
+        "variants": [variant_to_dict(variant) for variant in variants],
+        "chosen_provider": chosen["provider"] if chosen is not None else provider,
+        "chosen_variant": variant_to_dict(chosen) if chosen is not None else None,
+        "decision_reason": decision_reason,
+        "failure_reason": failure_reason,
     }
 
 
@@ -1495,8 +1647,12 @@ def cmd_download(
             chosen = next((v for v in variants if v["provider"] == provider), None)
             if chosen is None:
                 raise SystemExit(f"Provider not available for track: {provider}")
+            if not chosen["downloadable_now"] or not chosen["download_url"]:
+                raise SystemExit(f"Provider has no downloadable variant for track: {provider}")
         else:
-            chosen = next((v for v in variants if v["downloadable_now"]), variants[0])
+            chosen = next((v for v in variants if v["downloadable_now"] and v["download_url"]), None)
+            if chosen is None:
+                raise SystemExit("No downloadable variant available for track")
         result = adapter.download_variant(chosen, worker.download_dir)
         repo.log_download_file(None, track_id, result["path"], result["status"], result)
         repo.push("download_result", {"target_kind": "track", "track_id": track_id, "result": result})
@@ -1541,13 +1697,44 @@ def cmd_download_preview(repo: Repository, track_id: int) -> dict[str, Any]:
     if track is None:
         raise SystemExit(f"Track not found: {track_id}")
     variants = repo.get_track_variants(track_id)
-    chosen = next((v for v in variants if v["downloadable_now"]), variants[0] if variants else None)
+    chosen = next((v for v in variants if v["downloadable_now"] and v["download_url"]), variants[0] if variants else None)
     return {
         "track": dict(track),
         "variant_count": len(variants),
         "default_provider": chosen["provider"] if chosen is not None else None,
         "variants": [variant_to_dict(v) for v in variants],
     }
+
+
+def cmd_download_choose(
+    repo: Repository,
+    adapter: MusicdlAdapter,
+    worker: DownloadQueueWorker,
+    track_id: int,
+    provider: str | None,
+    dry_run: bool,
+    refresh_health: bool,
+) -> dict[str, Any]:
+    decision = choose_download_variant(repo, adapter, track_id, provider, refresh_health)
+    chosen_variant = decision["chosen_variant"]
+    if chosen_variant is None:
+        return {**decision, "status": "unavailable"}
+    if dry_run:
+        return {**decision, "status": "planned"}
+    chosen = next(variant for variant in repo.get_track_variants(track_id) if variant["id"] == chosen_variant["id"])
+    result = adapter.download_variant(chosen, worker.download_dir)
+    repo.log_download_file(None, track_id, result["path"], result["status"], result)
+    repo.push(
+        "download_result",
+        {
+            "target_kind": "track",
+            "track_id": track_id,
+            "provider": decision["chosen_provider"],
+            "decision_reason": decision["decision_reason"],
+            "result": result,
+        },
+    )
+    return {**decision, "status": "completed", "result": result}
 
 
 def cmd_download_queue(repo: Repository, limit: int) -> dict[str, Any]:
@@ -1596,36 +1783,9 @@ def cmd_channels_health(
     selected_sources = [provider] if provider else list(adapter.sources)
     if provider and provider not in adapter.sources:
         raise SystemExit(f"Provider not active: {provider}")
-    if refresh:
-        for source in selected_sources:
-            probe = adapter.probe_provider(source)
-            repo.record_provider_health(
-                provider=probe["provider"],
-                probe_query=probe["probe_query"],
-                status=probe["status"],
-                latency_ms=probe["latency_ms"],
-                result_count=probe["result_count"],
-                downloadable_count=probe["downloadable_count"],
-                error=probe["error"],
-                payload=probe,
-            )
-    health_rows = repo.latest_provider_health(limit)
+    health_rows = load_provider_health(repo, adapter, selected_sources, refresh, "Jay Chou")
     if provider:
         health_rows = [row for row in health_rows if row["provider"] == provider]
-    for row in health_rows:
-        latency_ms = int(row["latency_ms"])
-        if row["status"] == "ok":
-            if latency_ms < 4000:
-                severity = "healthy"
-            elif latency_ms < 10000:
-                severity = "degraded"
-            else:
-                severity = "slow"
-        elif row["status"] == "empty":
-            severity = "degraded"
-        else:
-            severity = "unhealthy"
-        row["severity"] = severity
     return {
         "channels": cmd_channels(adapter),
         "selected_provider": provider,
@@ -1750,6 +1910,11 @@ def build_parser() -> argparse.ArgumentParser:
     dtrack = dsub.add_parser("track")
     dtrack.add_argument("--track-id", type=int, required=True)
     dtrack.add_argument("--provider")
+    dchoose = dsub.add_parser("choose")
+    dchoose.add_argument("--track-id", type=int, required=True)
+    dchoose.add_argument("--provider")
+    dchoose.add_argument("--dry-run", action="store_true")
+    dchoose.add_argument("--refresh-health", action="store_true")
     dplaylist = dsub.add_parser("playlist")
     dplaylist.add_argument("--playlist", required=True)
     dalbum = dsub.add_parser("album")
@@ -1863,6 +2028,18 @@ def main() -> None:
             )
             if args.download_target != "track":
                 time.sleep(0.1)
+        elif args.download_target == "choose":
+            print_json(
+                cmd_download_choose(
+                    repo,
+                    adapter,
+                    worker,
+                    args.track_id,
+                    args.provider,
+                    args.dry_run,
+                    args.refresh_health,
+                )
+            )
         elif args.download_target == "preview":
             print_json(cmd_download_preview(repo, args.track_id))
         elif args.download_target == "queue":

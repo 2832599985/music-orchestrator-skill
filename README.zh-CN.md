@@ -63,7 +63,7 @@
 - `push-list`
 - `push-show`
 - `push-mark-consumed`
-- `download track|playlist|album|preview|queue|status|files|retry|cancel`
+- `download choose|track|playlist|album|preview|queue|status|files|retry|cancel`
 
 ## 安装
 
@@ -114,6 +114,7 @@ git clone https://github.com/2832599985/music-orchestrator-skill.git \
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl recommend --collection likes --limit 12
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl playlist create --name "今晚循环"
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl variants --track-id TRACK_ID
+~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download choose --track-id TRACK_ID --refresh-health
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download track --track-id TRACK_ID --provider JBSouMusicClient
 ```
 
@@ -122,7 +123,8 @@ git clone https://github.com/2832599985/music-orchestrator-skill.git \
 1. 先用 `musicctl channels` 查看有哪些可用渠道
 2. 再用 `musicctl channels-health --refresh` 查看实时健康状态
 3. 用 `musicctl variants --track-id ...` 查看这首歌有哪些来源变体
-4. 最后用 `musicctl download track --track-id ... --provider ...` 指定 provider 下载
+4. 优先用 `musicctl download choose --track-id ... --refresh-health` 自动选源
+5. 只有当你想手动控制 provider 时，再用 `musicctl download track --track-id ... --provider ...`
 
 ## Provider 健康探针
 

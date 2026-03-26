@@ -63,7 +63,7 @@ Current command surface includes:
 - `push-list`
 - `push-show`
 - `push-mark-consumed`
-- `download track|playlist|album|preview|queue|status|files|retry|cancel`
+- `download choose|track|playlist|album|preview|queue|status|files|retry|cancel`
 
 ## Install
 
@@ -114,6 +114,7 @@ Examples:
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl recommend --collection likes --limit 12
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl playlist create --name "今晚循环"
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl variants --track-id TRACK_ID
+~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download choose --track-id TRACK_ID --refresh-health
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl download track --track-id TRACK_ID --provider JBSouMusicClient
 ```
 
@@ -122,7 +123,8 @@ Recommended download flow:
 1. Inspect channels with `musicctl channels`
 2. Probe health with `musicctl channels-health --refresh`
 3. Check source variants with `musicctl variants --track-id ...`
-4. Download with `musicctl download track --track-id ... --provider ...`
+4. Prefer `musicctl download choose --track-id ... --refresh-health`
+5. Download explicitly with `musicctl download track --track-id ... --provider ...` only when you want manual provider control
 
 ## Provider Health
 

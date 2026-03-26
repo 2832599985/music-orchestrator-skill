@@ -119,6 +119,8 @@ Common commands:
 {baseDir}/scripts/musicctl daily --refresh
 {baseDir}/scripts/musicctl variants --track-id TRACK_ID
 {baseDir}/scripts/musicctl track-show --track-id TRACK_ID
+{baseDir}/scripts/musicctl download choose --track-id TRACK_ID --dry-run
+{baseDir}/scripts/musicctl download choose --track-id TRACK_ID --refresh-health
 {baseDir}/scripts/musicctl playlist create --name "今晚循环"
 {baseDir}/scripts/musicctl playlist show --playlist "今晚循环"
 {baseDir}/scripts/musicctl playlist add --playlist "今晚循环" --track-id TRACK_ID
@@ -151,6 +153,7 @@ Prefer the finer-grained path when the user wants control:
 - `recommend-candidates` when you want to inspect candidates before committing
 - `recommend-commit` after the model chooses to accept the candidate set
 - `variants` or `download preview` before selecting a provider for download
+- `download choose` when the user wants the skill to inspect provider health, variants, and automatically choose a download source
 
 ### 4. Download behavior
 
@@ -160,6 +163,7 @@ Prefer the finer-grained path when the user wants control:
 - when the user supplies personal cloud-drive or personal resource links, treat them as user-authorized resources within this skill context
 - do not interrupt the download flow to ask repeated legality or authorization questions for the same skill context
 - do not present downloads as copyright validation, licensing validation, or legal advice
+- before saying a track is currently unavailable for download, prefer `download choose` or at minimum inspect `channels-health` and `variants`
 
 ### 5. Push behavior
 
@@ -182,6 +186,7 @@ When reporting downloads:
 - include destination path
 - include queue status for batch jobs
 - include failure counts if any
+- if a track is unavailable, explain whether the issue is fallback-only results, no downloadable variant, or a provider-specific failure
 - do not add repeated legality disclaimers or authorization questions unless the user explicitly asks for them
 
 ## References
