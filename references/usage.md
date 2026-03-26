@@ -34,7 +34,7 @@ Optional environment variables:
 ```bash
 export MUSIC_ORCH_DB=/custom/path/music.db
 export MUSIC_ORCH_DOWNLOADS=/custom/path/downloads
-export MUSIC_ORCH_SOURCES="JBSouMusicClient,MyFreeMP3MusicClient,MP3JuiceMusicClient"
+export MUSIC_ORCH_SOURCES="MyFreeMP3JuicesMusicClient,JBSouMusicClient,MyFreeMP3MusicClient,MP3JuiceMusicClient"
 export MUSIC_ORCH_MODEL_MODE="native"
 export MUSIC_ORCH_MYFREEJUICES_CF_CLEARANCE=""
 export MUSIC_ORCH_MYFREEJUICES_LANG="en"

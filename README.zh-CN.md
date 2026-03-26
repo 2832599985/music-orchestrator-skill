@@ -156,10 +156,9 @@ git clone https://github.com/2832599985/music-orchestrator-skill.git \
 
 ## 可选受保护 Provider
 
-`MyFreeMP3JuicesMusicClient` 是一个可选 provider，对应 `https://2024.myfreemp3juices.cc/`。
+`MyFreeMP3JuicesMusicClient` 是一个默认 provider，对应 `https://2024.myfreemp3juices.cc/`。
 
-- 默认不启用
-- 需要把它加入 `MUSIC_ORCH_SOURCES`
+- 默认已经包含在 source 集合里
 - 需要有效的 `cf_clearance`
 - cookie 会保存到 `state/provider_auth.json`
 - 环境变量可以覆盖本地状态：

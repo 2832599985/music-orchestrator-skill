@@ -20,6 +20,7 @@ from embedded_music_backend import EmbeddedMusicBackend, MYFREEJUICES_PROVIDER, 
 
 
 DEFAULT_SOURCES = [
+    MYFREEJUICES_PROVIDER,
     "JBSouMusicClient",
     "MyFreeMP3MusicClient",
     "MP3JuiceMusicClient",

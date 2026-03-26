@@ -155,10 +155,9 @@ Probe results are persisted into `provider_health`.
 
 ## Optional Protected Provider
 
-`MyFreeMP3JuicesMusicClient` is available as an optional provider for `https://2024.myfreemp3juices.cc/`.
+`MyFreeMP3JuicesMusicClient` is a default provider for `https://2024.myfreemp3juices.cc/`.
 
-- It is not enabled by default.
-- Enable it by adding it to `MUSIC_ORCH_SOURCES`.
+- It is included in the default source set.
 - It requires a valid `cf_clearance`.
 - The cookie can be stored in `state/provider_auth.json`.
 - Environment variables override the saved state:

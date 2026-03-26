@@ -543,11 +543,12 @@ class EmbeddedMusicBackend:
         MYFREEJUICES_PROVIDER: MyFreeMP3JuicesProvider,
     }
     default_source_names = [
+        MYFREEJUICES_PROVIDER,
         "JBSouMusicClient",
         "MyFreeMP3MusicClient",
         "MP3JuiceMusicClient",
     ]
-    optional_source_names = [MYFREEJUICES_PROVIDER]
+    optional_source_names: list[str] = []
 
     def __init__(self, sources: list[str], auth_store: ProviderAuthStore | None = None) -> None:
         self.sources = sources
@@ -635,7 +636,7 @@ class EmbeddedMusicBackend:
             "notes": [
                 "active_sources are the embedded providers implemented inside this skill",
                 "fallback_search_only providers can supply recommendation candidates but not direct downloads",
-                "optional_sources may require local auth state before they can be searched or downloaded",
+                "some default_sources may require local auth state before they can be searched or downloaded",
             ],
         }
 
