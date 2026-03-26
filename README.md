@@ -1,5 +1,7 @@
 # Music Orchestrator Skill
 
+[中文说明](README.zh-CN.md)
+
 Local-first music skill for OpenClaw.
 
 It is designed as an orchestrator rather than a thin search wrapper, so the model can control the full workflow end to end:
