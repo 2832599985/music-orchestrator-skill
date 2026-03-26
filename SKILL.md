@@ -28,7 +28,7 @@ It uses:
 
 - a local SQLite database
 - Python scripts in `scripts/`
-- `musicdl` as the default search and download backend
+- an embedded search and download backend implemented inside this skill
 - provider and repository abstractions so future platform integrations do not change the top-level workflow
 
 ## When To Use
@@ -64,12 +64,14 @@ Session-level default assumption for this skill:
 
 ## First Run
 
-Install dependencies and initialize the local database:
+Initialize the local database:
 
 ```bash
 {baseDir}/scripts/install.sh
 {baseDir}/scripts/musicctl init
 ```
+
+`install.sh` is an optional self-check. The skill runs directly with `python3` and does not require a separate `musicdl` install or a dedicated virtual environment.
 
 Default database path:
 

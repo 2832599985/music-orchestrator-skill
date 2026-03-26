@@ -165,8 +165,8 @@ Push:
 
 ## Common Failure Cases
 
-- `musicdl is not installed`
-  Run `scripts/install.sh`.
+- `search fell back to iTunes`
+  Embedded providers did not return usable results in time, so the skill returned search-only fallback metadata.
 - `No collection found`
   Create a playlist or save some tracks first.
 - `No downloadable variant`

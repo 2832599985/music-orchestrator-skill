@@ -13,6 +13,8 @@
 - 下载单曲、歌单、专辑
 - 先检查可用渠道，再自主选择下载 provider
 
+下载和搜索后端已经内置在仓库里。只要安装这个 skill 就能运行，不需要额外安装 `musicdl`。
+
 ## 仓库内容
 
 - `SKILL.md`：模型运行规则和操作约束
@@ -81,6 +83,8 @@ git clone https://github.com/2832599985/music-orchestrator-skill.git \
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl init
 ```
 
+`install.sh` 现在只是一个轻量自检脚本。实际运行链路是 `scripts/musicctl -> python3 -> skill 内置后端`。
+
 安装完成后的目录结构应类似：
 
 ```text
@@ -97,6 +101,7 @@ git clone https://github.com/2832599985/music-orchestrator-skill.git \
     │   ├── schema.md
     │   └── providers.md
     └── scripts/
+        ├── embedded_music_backend.py
         ├── install.sh
         ├── musicctl
         └── music_orchestrator.py

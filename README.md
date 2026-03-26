@@ -13,6 +13,8 @@ It is designed as an orchestrator rather than a thin search wrapper, so the mode
 - download tracks, playlists, and albums
 - inspect available channels and choose a download provider explicitly
 
+The download/search backend is embedded in this repository. Installing the skill is enough to run it; no separate `musicdl` package install is required.
+
 ## What It Includes
 
 - `SKILL.md`: runtime behavior and operating rules for the model
@@ -81,6 +83,8 @@ Then run:
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl init
 ```
 
+`install.sh` is only a lightweight environment check. The runtime path is `scripts/musicctl -> python3 -> embedded skill backend`.
+
 Expected layout after install:
 
 ```text
@@ -97,6 +101,7 @@ Expected layout after install:
     │   ├── schema.md
     │   └── providers.md
     └── scripts/
+        ├── embedded_music_backend.py
         ├── install.sh
         ├── musicctl
         └── music_orchestrator.py

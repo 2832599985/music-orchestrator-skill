@@ -7,7 +7,7 @@ The skill is split into these layers:
 - orchestrator instructions in `SKILL.md`
 - command entrypoint in `scripts/musicctl`
 - domain and persistence in `scripts/music_orchestrator.py`
-- external provider adapter through `musicdl`
+- embedded provider backend in `scripts/embedded_music_backend.py`
 
 Top-level flow:
 
@@ -59,7 +59,7 @@ Keep those boundaries stable so the model can orchestrate with finer granularity
 
 ## Adding a Provider
 
-Add a provider by extending the adapter layer in `scripts/music_orchestrator.py`.
+Add a provider by extending the embedded backend layer in `scripts/embedded_music_backend.py`.
 
 Required methods:
 
@@ -90,7 +90,7 @@ Do not let service or provider code talk raw SQL.
 
 To add authenticated platforms later:
 
-- keep the current `MusicdlAdapter` for anonymous and aggregate sources
+- keep the current `MusicdlAdapter` facade and swap or extend the embedded provider set for anonymous and aggregate sources
 - add a separate `AccountProvider` abstraction for user-bound APIs
 - keep analyzer, planner, push, and playlist services unchanged
 

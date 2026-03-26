@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from embedded_music_backend import EmbeddedMusicBackend
 
 
 DEFAULT_SOURCES = [
@@ -52,6 +53,7 @@ class CandidateTrack:
     lyric: str
     downloadable_now: bool
     ext: str
+    download_headers_json: str = ""
 
 
 class Repository:
@@ -497,6 +499,10 @@ class Repository:
                 (track_id,),
             ).fetchall()
 
+    def get_variant(self, variant_id: int) -> sqlite3.Row | None:
+        with self.connect() as conn:
+            return conn.execute("SELECT * FROM track_variants WHERE id = ?", (variant_id,)).fetchone()
+
     def search_rows(self, limit: int = 20) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(
@@ -865,30 +871,7 @@ class MusicdlAdapter:
     def __init__(self, work_dir: Path, sources: list[str]) -> None:
         self.work_dir = work_dir
         self.sources = sources
-
-    def _client(self):
-        try:
-            from musicdl.musicdl import MusicClient
-        except Exception as exc:
-            raise SystemExit(
-                "musicdl is not installed in this skill venv. Run scripts/install.sh first."
-            ) from exc
-        init_cfg = {
-            source: {
-                "work_dir": str(self.work_dir),
-                "max_retries": 1,
-                "search_size_per_source": 4,
-                "search_size_per_page": 4,
-                "strict_limit_search_size_per_page": True,
-            }
-            for source in self.sources
-        }
-        request_overrides = {source: {"timeout": 8} for source in self.sources}
-        return MusicClient(
-            music_sources=self.sources,
-            init_music_clients_cfg=init_cfg,
-            requests_overrides=request_overrides,
-        )
+        self.backend = EmbeddedMusicBackend(sources)
 
     def fallback_search(self, query: str, limit: int = 10) -> list[CandidateTrack]:
         url = (
@@ -912,133 +895,45 @@ class MusicdlAdapter:
                     lyric="",
                     downloadable_now=False,
                     ext="m4a",
+                    download_headers_json="",
                 )
             )
         return results
 
     def search(self, query: str) -> list[CandidateTrack]:
-        def run_musicdl() -> list[CandidateTrack]:
-            client = self._client()
-            raw = client.search(query)
-            candidates: list[CandidateTrack] = []
-            for source, items in raw.items():
-                for item in items or []:
-                    title = getattr(item, "song_name", "") or ""
-                    artists = getattr(item, "singers", "") or ""
-                    album = getattr(item, "album", "") or ""
-                    source_id = str(getattr(item, "identifier", "") or "")
-                    candidates.append(
-                        CandidateTrack(
-                            title=title,
-                            artists=artists,
-                            album=album,
-                            duration=getattr(item, "duration", "") or "",
-                            source=source,
-                            source_id=source_id or slug_key(title, artists, album),
-                            download_url=getattr(item, "download_url", "") or "",
-                            cover_url=getattr(item, "cover_url", "") or "",
-                            lyric=getattr(item, "lyric", "") or "",
-                            downloadable_now=bool(getattr(item, "with_valid_download_url", False)),
-                            ext=getattr(item, "ext", "") or "",
-                        )
-                    )
-            return candidates
+        def run_embedded() -> list[CandidateTrack]:
+            raw = self.backend.search(query, limit=12)
+            return [CandidateTrack(**item) for item in raw]
 
         try:
             pool = ThreadPoolExecutor(max_workers=1)
-            future = pool.submit(run_musicdl)
+            future = pool.submit(run_embedded)
             try:
-                return future.result(timeout=18)
+                return future.result(timeout=30)
             finally:
                 pool.shutdown(wait=False, cancel_futures=True)
         except (FuturesTimeoutError, Exception):
             return self.fallback_search(query)
 
     def download_variant(self, variant: sqlite3.Row, destination: Path) -> dict[str, Any]:
-        import shutil
-        import urllib.request
-
         url = variant["download_url"]
         if not url:
             raise SystemExit("Selected variant has no download URL")
         ext = variant["ext"] or "mp3"
         filename = f"{variant['provider']}-{variant['provider_track_id']}.{ext}"
-        destination.mkdir(parents=True, exist_ok=True)
-        out = destination / filename
-        with urllib.request.urlopen(url, timeout=60) as resp, out.open("wb") as fh:
-            shutil.copyfileobj(resp, fh)
-        return {"path": str(out), "provider": variant["provider"], "status": "downloaded"}
+        payload = {}
+        try:
+            payload = json.loads(variant["raw_json"])
+        except Exception:
+            payload = {}
+        result = self.backend.download(url, destination, filename, payload.get("download_headers_json", ""))
+        return {"path": result["path"], "provider": variant["provider"], "status": result["status"]}
 
     def list_channels(self) -> dict[str, Any]:
-        return {
-            "backend": "musicdl",
-            "default_sources": list(DEFAULT_SOURCES),
-            "active_sources": list(self.sources),
-            "fallback_search_only": ["ITunesFallback"],
-            "notes": [
-                "active_sources are the current musicdl providers used for search and downloadable variants",
-                "fallback_search_only providers can supply recommendation candidates but not direct downloads",
-            ],
-        }
+        return self.backend.list_channels()
 
     def probe_provider(self, source: str, query: str = "Jay Chou") -> dict[str, Any]:
-        started = time.time()
-        try:
-            from musicdl.musicdl import MusicClient
-        except Exception as exc:
-            elapsed_ms = int((time.time() - started) * 1000)
-            return {
-                "provider": source,
-                "probe_query": query,
-                "status": "init_failed",
-                "latency_ms": elapsed_ms,
-                "result_count": 0,
-                "downloadable_count": 0,
-                "error": str(exc),
-                "sample_titles": [],
-            }
-        try:
-            client = MusicClient(
-                music_sources=[source],
-                init_music_clients_cfg={
-                    source: {
-                        "work_dir": str(self.work_dir),
-                        "max_retries": 1,
-                        "search_size_per_source": 2,
-                        "search_size_per_page": 2,
-                        "strict_limit_search_size_per_page": True,
-                    }
-                },
-                requests_overrides={source: {"timeout": 6}},
-            )
-            raw = client.search(query)
-            items = raw.get(source, []) or []
-            elapsed_ms = int((time.time() - started) * 1000)
-            downloadable_count = sum(1 for item in items if bool(getattr(item, "with_valid_download_url", False)))
-            sample_titles = [getattr(item, "song_name", "") or "" for item in items[:3]]
-            status = "ok" if items else "empty"
-            return {
-                "provider": source,
-                "probe_query": query,
-                "status": status,
-                "latency_ms": elapsed_ms,
-                "result_count": len(items),
-                "downloadable_count": downloadable_count,
-                "error": "",
-                "sample_titles": sample_titles,
-            }
-        except Exception as exc:  # noqa: BLE001
-            elapsed_ms = int((time.time() - started) * 1000)
-            return {
-                "provider": source,
-                "probe_query": query,
-                "status": "search_failed",
-                "latency_ms": elapsed_ms,
-                "result_count": 0,
-                "downloadable_count": 0,
-                "error": str(exc),
-                "sample_titles": [],
-            }
+        return self.backend.probe_provider(source, query)
 
 
 class ProfileAnalyzer:
@@ -1166,7 +1061,7 @@ def build_paths() -> tuple[Path, Path, Path]:
     state_dir = base_dir / "state"
     db_path = Path(os.environ.get("MUSIC_ORCH_DB", state_dir / "music.db"))
     download_dir = Path(os.environ.get("MUSIC_ORCH_DOWNLOADS", state_dir / "downloads"))
-    provider_work_dir = state_dir / "musicdl-work"
+    provider_work_dir = state_dir / "provider-work"
     return db_path, download_dir, provider_work_dir
 
 
@@ -1231,6 +1126,29 @@ def severity_rank(value: str) -> int:
         "unknown": 4,
     }
     return order.get(value, 4)
+
+
+def candidate_match_score(track: sqlite3.Row | dict[str, Any], candidate: CandidateTrack) -> tuple[int, int, int]:
+    track_title = normalize_text(track["title"])
+    track_artists = normalize_text(track["artists"])
+    candidate_title = normalize_text(candidate.title)
+    candidate_artists = normalize_text(candidate.artists)
+    title_score = 0
+    if track_title and candidate_title:
+        if track_title == candidate_title:
+            title_score = 4
+        elif track_title in candidate_title or candidate_title in track_title:
+            title_score = 3
+        elif any(token and token in candidate_title for token in track_title.split(" ")):
+            title_score = 2
+    artist_score = 0
+    if track_artists and candidate_artists:
+        if track_artists == candidate_artists:
+            artist_score = 3
+        elif any(token and token in candidate_artists for token in track_artists.split(" ")):
+            artist_score = 1
+    downloadable_score = 1 if candidate.downloadable_now and candidate.download_url else 0
+    return (title_score, artist_score, downloadable_score)
 
 
 def load_provider_health(
@@ -1334,7 +1252,40 @@ def choose_download_variant(
             chosen = sorted(downloadable_variants, key=sort_key)[0]
             decision_reason = "best_downloadable_variant_by_health_and_provider_priority"
         elif not eligible_variants and any(variant["provider"] in fallback_only for variant in variants):
-            failure_reason = "fallback_only_results"
+            fresh_candidates: list[CandidateTrack] = []
+            search_queries = [
+                " ".join(part for part in [track["artists"], track["title"]] if part).strip(),
+                track["title"],
+            ]
+            for query in search_queries:
+                if not query:
+                    continue
+                try:
+                    fresh_candidates.extend(adapter.search(query))
+                except Exception:
+                    continue
+            fresh_candidates = [
+                candidate
+                for candidate in fresh_candidates
+                if candidate.source in active_sources and candidate.source not in fallback_only
+            ]
+            fresh_candidates = sorted(
+                fresh_candidates,
+                key=lambda candidate: candidate_match_score(track, candidate),
+                reverse=True,
+            )
+            if fresh_candidates and candidate_match_score(track, fresh_candidates[0])[0] > 0:
+                saved_rows = repo.save_candidates(fresh_candidates[:5])
+                matched_row = saved_rows[0]
+                matched_variants = repo.get_track_variants(matched_row["id"])
+                matched_downloadable = [variant for variant in matched_variants if bool(variant["downloadable_now"]) and bool(variant["download_url"])]
+                if matched_downloadable:
+                    chosen = sorted(matched_downloadable, key=sort_key)[0]
+                    decision_reason = "best_downloadable_variant_after_refresh_search"
+                else:
+                    failure_reason = "no_downloadable_variant"
+            else:
+                failure_reason = "fallback_only_results"
         else:
             failure_reason = "no_downloadable_variant"
 
@@ -1721,7 +1672,9 @@ def cmd_download_choose(
         return {**decision, "status": "unavailable"}
     if dry_run:
         return {**decision, "status": "planned"}
-    chosen = next(variant for variant in repo.get_track_variants(track_id) if variant["id"] == chosen_variant["id"])
+    chosen = repo.get_variant(chosen_variant["id"])
+    if chosen is None:
+        raise SystemExit(f"Variant not found: {chosen_variant['id']}")
     result = adapter.download_variant(chosen, worker.download_dir)
     repo.log_download_file(None, track_id, result["path"], result["status"], result)
     repo.push(
