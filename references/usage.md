@@ -36,6 +36,8 @@ export MUSIC_ORCH_DB=/custom/path/music.db
 export MUSIC_ORCH_DOWNLOADS=/custom/path/downloads
 export MUSIC_ORCH_SOURCES="JBSouMusicClient,MyFreeMP3MusicClient,MP3JuiceMusicClient"
 export MUSIC_ORCH_MODEL_MODE="native"
+export MUSIC_ORCH_MYFREEJUICES_CF_CLEARANCE=""
+export MUSIC_ORCH_MYFREEJUICES_LANG="en"
 ```
 
 ## Common Prompts
@@ -61,6 +63,7 @@ Search:
 
 ```bash
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels
+~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-refresh --provider MyFreeMP3JuicesMusicClient
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health --refresh
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health --provider JBSouMusicClient
@@ -167,6 +170,10 @@ Push:
 
 - `search fell back to iTunes`
   Embedded providers did not return usable results in time, so the skill returned search-only fallback metadata.
+- `missing_cf_clearance`
+  The protected MyFreeMP3Juices provider is enabled but has no local auth state yet. Run `channels-refresh`.
+- `invalid_cf_clearance`
+  The saved or exported `cf_clearance` is expired. Refresh it with `channels-refresh`.
 - `No collection found`
   Create a playlist or save some tracks first.
 - `No downloadable variant`

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -12,6 +14,7 @@ from typing import Any
 
 
 VALID_AUDIO_EXTS = {"mp3", "m4a", "flac", "wav", "ogg", "aac", "opus"}
+MYFREEJUICES_PROVIDER = "MyFreeMP3JuicesMusicClient"
 
 
 def _request(
@@ -140,8 +143,58 @@ def _duration_from_lrc(text: str) -> str:
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
 
+def _duration_from_seconds(seconds: Any) -> str:
+    try:
+        total_seconds = int(seconds or 0)
+    except (TypeError, ValueError):
+        return ""
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    remainder = total_seconds % 60
+    return f"{hours:02d}:{minutes:02d}:{remainder:02d}"
+
+
+def _parse_jsonp_payload(text: str) -> Any:
+    payload = (text or "").strip()
+    start = payload.find("(")
+    end = payload.rfind(")")
+    if start == -1 or end == -1 or end <= start:
+        raise ValueError("invalid_jsonp_response")
+    return json.loads(payload[start + 1 : end])
+
+
+class ProviderAuthStore:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def load(self) -> dict[str, Any]:
+        if not self.path.exists():
+            return {}
+        try:
+            return json.loads(self.path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+
+    def get(self, provider: str) -> dict[str, Any]:
+        payload = self.load()
+        value = payload.get(provider)
+        if isinstance(value, dict):
+            return value
+        return {}
+
+    def set(self, provider: str, config: dict[str, Any]) -> dict[str, Any]:
+        payload = self.load()
+        payload[provider] = config
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return config
+
+
 class EmbeddedProvider:
     name = "EmbeddedProvider"
+
+    def __init__(self, auth_store: ProviderAuthStore | None = None) -> None:
+        self.auth_store = auth_store
 
     def search(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         raise NotImplementedError
@@ -400,16 +453,110 @@ class MP3JuiceProvider(EmbeddedProvider):
         return items
 
 
+class MyFreeMP3JuicesProvider(EmbeddedProvider):
+    name = MYFREEJUICES_PROVIDER
+    base_url = "https://2024.myfreemp3juices.cc"
+    site_url = f"{base_url}/"
+    search_path = "/api/api_search.php"
+    user_agent = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0"
+    )
+
+    def _auth(self) -> tuple[str, str]:
+        clearance = os.environ.get("MUSIC_ORCH_MYFREEJUICES_CF_CLEARANCE", "").strip()
+        music_lang = os.environ.get("MUSIC_ORCH_MYFREEJUICES_LANG", "").strip() or "en"
+        if not clearance and self.auth_store is not None:
+            stored = self.auth_store.get(self.name)
+            clearance = str(stored.get("cf_clearance", "") or "").strip()
+            music_lang = str(stored.get("music_lang", "") or music_lang).strip() or "en"
+        if not clearance:
+            raise ValueError("missing_cf_clearance")
+        return clearance, music_lang
+
+    def _search_headers(self, clearance: str, music_lang: str) -> dict[str, str]:
+        return {
+            "accept": "text/javascript, application/javascript, */*; q=0.01",
+            "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "origin": self.base_url,
+            "referer": self.site_url,
+            "user-agent": self.user_agent,
+            "x-requested-with": "XMLHttpRequest",
+            "cookie": f"cf_clearance={clearance}; musicLang={music_lang}",
+        }
+
+    def search(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
+        clearance, music_lang = self._auth()
+        callback = f"jQuery_{int(time.time() * 1000)}"
+        url = f"{self.base_url}{self.search_path}?" + urllib.parse.urlencode({"callback": callback})
+        body = urllib.parse.urlencode({"q": query, "page": 0}).encode("utf-8")
+        try:
+            text, _, _ = _request_text(
+                url,
+                method="POST",
+                headers=self._search_headers(clearance, music_lang),
+                data=body,
+                timeout=15,
+            )
+        except urllib.error.HTTPError as exc:
+            if exc.code == 403:
+                raise ValueError("invalid_cf_clearance") from exc
+            raise
+        payload = _parse_jsonp_payload(text)
+        response_items = payload.get("response", []) if isinstance(payload, dict) else []
+        items: list[dict[str, Any]] = []
+        for result in response_items:
+            if isinstance(result, str):
+                continue
+            if len(items) >= limit:
+                break
+            raw_url = str(result.get("url", "") or "").strip()
+            source_id = f"{result.get('owner_id', '')}_{result.get('id', '')}".strip("_")
+            if not raw_url or not source_id:
+                continue
+            probe = _probe_audio_url(raw_url, headers={"user-agent": self.user_agent}, timeout=12)
+            items.append(
+                {
+                    "title": str(result.get("title", "") or ""),
+                    "artists": str(result.get("artist", "") or ""),
+                    "album": "",
+                    "duration": _duration_from_seconds(result.get("duration")),
+                    "source": self.name,
+                    "source_id": source_id,
+                    "download_url": probe["final_url"] if probe["valid"] else raw_url,
+                    "cover_url": "",
+                    "lyric": "",
+                    "downloadable_now": bool(probe["valid"]) or bool(raw_url),
+                    "ext": probe["ext"] or "mp3",
+                    "download_headers_json": json.dumps({"user-agent": self.user_agent}, ensure_ascii=False),
+                }
+            )
+        return items
+
+
 class EmbeddedMusicBackend:
     provider_classes = {
         "JBSouMusicClient": JBSouProvider,
         "MyFreeMP3MusicClient": MyFreeMP3Provider,
         "MP3JuiceMusicClient": MP3JuiceProvider,
+        MYFREEJUICES_PROVIDER: MyFreeMP3JuicesProvider,
     }
+    default_source_names = [
+        "JBSouMusicClient",
+        "MyFreeMP3MusicClient",
+        "MP3JuiceMusicClient",
+    ]
+    optional_source_names = [MYFREEJUICES_PROVIDER]
 
-    def __init__(self, sources: list[str]) -> None:
+    def __init__(self, sources: list[str], auth_store: ProviderAuthStore | None = None) -> None:
         self.sources = sources
-        self.providers = {name: self.provider_classes[name]() for name in sources if name in self.provider_classes}
+        self.auth_store = auth_store
+        self.providers = {
+            name: self.provider_classes[name](auth_store=self.auth_store)
+            for name in sources
+            if name in self.provider_classes
+        }
         self.fallback = ITunesFallbackProvider()
 
     def _query_candidates(self, query: str) -> list[str]:
@@ -481,12 +628,14 @@ class EmbeddedMusicBackend:
     def list_channels(self) -> dict[str, Any]:
         return {
             "backend": "embedded",
-            "default_sources": list(self.provider_classes.keys()),
+            "default_sources": list(self.default_source_names),
+            "optional_sources": list(self.optional_source_names),
             "active_sources": list(self.providers.keys()),
             "fallback_search_only": ["ITunesFallback"],
             "notes": [
                 "active_sources are the embedded providers implemented inside this skill",
                 "fallback_search_only providers can supply recommendation candidates but not direct downloads",
+                "optional_sources may require local auth state before they can be searched or downloaded",
             ],
         }
 

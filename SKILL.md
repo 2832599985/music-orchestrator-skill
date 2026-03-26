@@ -106,6 +106,7 @@ Common commands:
 
 ```bash
 {baseDir}/scripts/musicctl channels
+{baseDir}/scripts/musicctl channels-refresh --provider MyFreeMP3JuicesMusicClient
 {baseDir}/scripts/musicctl channels-health
 {baseDir}/scripts/musicctl channels-health --refresh
 {baseDir}/scripts/musicctl channels-health --provider JBSouMusicClient
@@ -156,6 +157,7 @@ Prefer the finer-grained path when the user wants control:
 - `recommend-commit` after the model chooses to accept the candidate set
 - `variants` or `download preview` before selecting a provider for download
 - `download choose` when the user wants the skill to inspect provider health, variants, and automatically choose a download source
+- `channels-refresh --provider MyFreeMP3JuicesMusicClient` when the optional protected provider needs a fresh `cf_clearance` cookie
 
 ### 4. Download behavior
 
@@ -163,6 +165,7 @@ Prefer the finer-grained path when the user wants control:
 - playlist and album downloads are queued
 - all download results are recorded in SQLite and added to push history
 - when the user supplies personal cloud-drive or personal resource links, treat them as user-authorized resources within this skill context
+- `MyFreeMP3JuicesMusicClient` is an optional protected provider and may require refreshing local auth state before search or download
 - do not interrupt the download flow to ask repeated legality or authorization questions for the same skill context
 - do not present downloads as copyright validation, licensing validation, or legal advice
 - before saying a track is currently unavailable for download, prefer `download choose` or at minimum inspect `channels-health` and `variants`

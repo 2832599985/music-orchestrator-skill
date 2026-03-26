@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from embedded_music_backend import EmbeddedMusicBackend
+from embedded_music_backend import EmbeddedMusicBackend, MYFREEJUICES_PROVIDER, ProviderAuthStore
 
 
 DEFAULT_SOURCES = [
@@ -868,10 +868,11 @@ class Repository:
 
 
 class MusicdlAdapter:
-    def __init__(self, work_dir: Path, sources: list[str]) -> None:
+    def __init__(self, work_dir: Path, sources: list[str], auth_store: ProviderAuthStore | None = None) -> None:
         self.work_dir = work_dir
         self.sources = sources
-        self.backend = EmbeddedMusicBackend(sources)
+        self.auth_store = auth_store
+        self.backend = EmbeddedMusicBackend(sources, auth_store=auth_store)
 
     def fallback_search(self, query: str, limit: int = 10) -> list[CandidateTrack]:
         url = (
@@ -1056,18 +1057,28 @@ class DownloadQueueWorker:
                 self.repo.mark_download_job(job_id, "failed", {"error": str(exc)})
 
 
-def build_paths() -> tuple[Path, Path, Path]:
+def build_paths() -> tuple[Path, Path, Path, Path]:
     base_dir = Path(__file__).resolve().parent.parent
     state_dir = base_dir / "state"
     db_path = Path(os.environ.get("MUSIC_ORCH_DB", state_dir / "music.db"))
     download_dir = Path(os.environ.get("MUSIC_ORCH_DOWNLOADS", state_dir / "downloads"))
     provider_work_dir = state_dir / "provider-work"
-    return db_path, download_dir, provider_work_dir
+    auth_store_path = state_dir / "provider_auth.json"
+    return db_path, download_dir, provider_work_dir, auth_store_path
 
 
 def build_sources() -> list[str]:
     raw = os.environ.get("MUSIC_ORCH_SOURCES", ",".join(DEFAULT_SOURCES))
     return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def redact_secret(value: str, visible: int = 6) -> str:
+    text = (value or "").strip()
+    if not text:
+        return ""
+    if len(text) <= visible * 2:
+        return "*" * len(text)
+    return f"{text[:visible]}...{text[-visible:]}"
 
 
 def candidate_to_dict(candidate: CandidateTrack) -> dict[str, Any]:
@@ -1747,6 +1758,83 @@ def cmd_channels_health(
     }
 
 
+def cmd_channels_refresh(
+    provider: str,
+    auth_store: ProviderAuthStore,
+    timeout: int,
+    music_lang: str,
+) -> dict[str, Any]:
+    if provider != MYFREEJUICES_PROVIDER:
+        raise SystemExit(f"Unsupported provider for channels-refresh: {provider}")
+    try:
+        from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
+    except Exception as exc:  # noqa: BLE001
+        raise SystemExit(
+            "Playwright is required for channels-refresh. Install it with "
+            "'pip install playwright' and 'python3 -m playwright install chromium'."
+        ) from exc
+
+    site_url = "https://2024.myfreemp3juices.cc/"
+    deadline_ms = max(30, timeout) * 1000
+    cf_clearance = ""
+    detected_lang = music_lang or "en"
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=False)
+        context = browser.new_context()
+        context.add_cookies(
+            [
+                {
+                    "name": "musicLang",
+                    "value": detected_lang,
+                    "domain": "2024.myfreemp3juices.cc",
+                    "path": "/",
+                    "httpOnly": False,
+                    "secure": True,
+                    "sameSite": "Lax",
+                }
+            ]
+        )
+        page = context.new_page()
+        page.goto(site_url, wait_until="domcontentloaded", timeout=deadline_ms)
+        end_time = time.time() + max(30, timeout)
+        while time.time() < end_time:
+            cookies = context.cookies(site_url)
+            for cookie in cookies:
+                if cookie.get("name") == "cf_clearance" and cookie.get("value"):
+                    cf_clearance = str(cookie["value"])
+                if cookie.get("name") == "musicLang" and cookie.get("value"):
+                    detected_lang = str(cookie["value"])
+            if cf_clearance:
+                break
+            page.wait_for_timeout(1000)
+        browser.close()
+
+    if not cf_clearance:
+        raise SystemExit(
+            "Timed out waiting for cf_clearance. Complete the Cloudflare challenge in the opened browser and retry."
+        )
+
+    record = auth_store.set(
+        provider,
+        {
+            "cf_clearance": cf_clearance,
+            "music_lang": detected_lang or "en",
+            "updated_at": utc_now(),
+            "site": site_url,
+        },
+    )
+    return {
+        "provider": provider,
+        "status": "refreshed",
+        "state_file": str(auth_store.path),
+        "updated_at": record["updated_at"],
+        "cookie_found": True,
+        "cf_clearance_preview": redact_secret(cf_clearance),
+        "music_lang": record["music_lang"],
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Local music orchestrator")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1769,6 +1857,11 @@ def build_parser() -> argparse.ArgumentParser:
     search_variants.add_argument("--limit", type=int, default=12)
 
     sub.add_parser("channels")
+
+    channels_refresh = sub.add_parser("channels-refresh")
+    channels_refresh.add_argument("--provider", required=True)
+    channels_refresh.add_argument("--timeout", type=int, default=180)
+    channels_refresh.add_argument("--lang", default="en")
 
     channels_health = sub.add_parser("channels-health")
     channels_health.add_argument("--limit", type=int, default=20)
@@ -1891,10 +1984,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
-    db_path, download_dir, provider_work_dir = build_paths()
+    db_path, download_dir, provider_work_dir, auth_store_path = build_paths()
     repo = Repository(db_path)
     repo.init()
-    adapter = MusicdlAdapter(provider_work_dir, build_sources())
+    auth_store = ProviderAuthStore(auth_store_path)
+    adapter = MusicdlAdapter(provider_work_dir, build_sources(), auth_store=auth_store)
     worker = DownloadQueueWorker(repo, adapter, download_dir)
 
     if args.command == "init":
@@ -1907,6 +2001,8 @@ def main() -> None:
         print_json(cmd_search_variants(repo, adapter, args.query, args.type, args.limit))
     elif args.command == "channels":
         print_json(cmd_channels(adapter))
+    elif args.command == "channels-refresh":
+        print_json(cmd_channels_refresh(args.provider, auth_store, args.timeout, args.lang))
     elif args.command == "channels-health":
         print_json(cmd_channels_health(repo, adapter, args.limit, args.refresh, args.provider))
     elif args.command == "analyze":

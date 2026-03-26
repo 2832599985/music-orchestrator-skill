@@ -57,6 +57,7 @@
 - `track-show`
 - `variants`
 - `channels`
+- `channels-refresh`
 - `channels-health`
 - `playlist create|list|show|add|remove|delete|rename`
 - `collection list|show|create|add|remove|merge`
@@ -113,6 +114,7 @@ git clone https://github.com/2832599985/music-orchestrator-skill.git \
 
 ```bash
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels
+~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-refresh --provider MyFreeMP3JuicesMusicClient
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health --refresh
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl search --query "city pop 夜晚" --type mixed --limit 10
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl analyze --collection likes
@@ -151,6 +153,23 @@ git clone https://github.com/2832599985/music-orchestrator-skill.git \
 - `severity`
 
 探测结果会持久化到 `provider_health`。
+
+## 可选受保护 Provider
+
+`MyFreeMP3JuicesMusicClient` 是一个可选 provider，对应 `https://2024.myfreemp3juices.cc/`。
+
+- 默认不启用
+- 需要把它加入 `MUSIC_ORCH_SOURCES`
+- 需要有效的 `cf_clearance`
+- cookie 会保存到 `state/provider_auth.json`
+- 环境变量可以覆盖本地状态：
+  - `MUSIC_ORCH_MYFREEJUICES_CF_CLEARANCE`
+  - `MUSIC_ORCH_MYFREEJUICES_LANG`
+- 可以通过下面的命令刷新本地 auth：
+  `~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-refresh --provider MyFreeMP3JuicesMusicClient`
+- `channels-refresh` 依赖本机 Playwright 和 Chromium：
+  `pip install playwright`
+  `python3 -m playwright install chromium`
 
 ## 文档入口
 

@@ -57,6 +57,7 @@ Current command surface includes:
 - `track-show`
 - `variants`
 - `channels`
+- `channels-refresh`
 - `channels-health`
 - `playlist create|list|show|add|remove|delete|rename`
 - `collection list|show|create|add|remove|merge`
@@ -113,6 +114,7 @@ Examples:
 
 ```bash
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels
+~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-refresh --provider MyFreeMP3JuicesMusicClient
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-health --refresh
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl search --query "city pop 夜晚" --type mixed --limit 10
 ~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl analyze --collection likes
@@ -150,6 +152,23 @@ Returned fields include:
 - `severity`
 
 Probe results are persisted into `provider_health`.
+
+## Optional Protected Provider
+
+`MyFreeMP3JuicesMusicClient` is available as an optional provider for `https://2024.myfreemp3juices.cc/`.
+
+- It is not enabled by default.
+- Enable it by adding it to `MUSIC_ORCH_SOURCES`.
+- It requires a valid `cf_clearance`.
+- The cookie can be stored in `state/provider_auth.json`.
+- Environment variables override the saved state:
+  - `MUSIC_ORCH_MYFREEJUICES_CF_CLEARANCE`
+  - `MUSIC_ORCH_MYFREEJUICES_LANG`
+- You can refresh local auth state with:
+  `~/.openclaw/workspace/skills/music-orchestrator/scripts/musicctl channels-refresh --provider MyFreeMP3JuicesMusicClient`
+- `channels-refresh` requires local Playwright and Chromium:
+  `pip install playwright`
+  `python3 -m playwright install chromium`
 
 ## Documentation
 
